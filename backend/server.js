@@ -5,6 +5,7 @@ const cors = require('cors');
 
 // Importing Routes
 const productsRoutes = require('./routes/products');
+const variantsRoutes = require('./routes/variants');
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
@@ -15,8 +16,9 @@ app.get('/', (req, res) => {
   res.send('Pub Manager API 🚀');
 });
 
-// Products Routes Middleware
+// Routes Middleware
 app.use('/api/products', productsRoutes);
+app.use('/api/variants', variantsRoutes);
 
 // CORS Middleware
 app.use(cors());
