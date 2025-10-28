@@ -15,23 +15,23 @@ function getAllergens(req, res) {
 
 // POST nuovo allergene
 function createAllergen(req, res) {
-    const { name } = req.body;
-    const sql = 'INSERT INTO allergens (name) VALUES (?)';
-    connection.query(sql, [name], (err, results) => {
+    const { code, name } = req.body;
+    const sql = 'INSERT INTO allergens (code, name) VALUES (?, ?)';
+    connection.query(sql, [code, name], (err, results) => {
         if (err) return res.status(500).json({ error: err });
-        res.status(201).json({ id: results.insertId, name });
+        res.status(201).json({ id: results.insertId, code, name });
     });
 }
 
 // PATCH aggiornamento allergene
 function updateAllergen(req, res) {
     const { id } = req.params;
-    const { name } = req.body;
-    const sql = 'UPDATE allergens SET name = ? WHERE id = ?';
-    connection.query(sql, [name, id], (err, results) => {
+    const { code, name } = req.body;
+    const sql = 'UPDATE allergens SET code = ?, name = ? WHERE id = ?';
+    connection.query(sql, [code, name, id], (err, results) => {
         if (err) return res.status(500).json({ error: err });
         if (results.affectedRows === 0) return res.status(404).json({ message: 'Allergene non trovato' });
-        res.json({ id, name });
+        res.json({ id, code, name });
     });
 }
 
