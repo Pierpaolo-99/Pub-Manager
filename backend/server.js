@@ -10,6 +10,7 @@ const stockRoutes = require('./routes/stock');
 const ordersRoutes = require('./routes/orders');
 const allergensRoutes = require('./routes/allergens');
 const promotionsRoutes = require('./routes/promotions');
+const categoriesRoutes = require('./routes/categories');
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
@@ -26,7 +27,8 @@ app.use('/api/variants', variantsRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/allergens', allergensRoutes);
-app.use('/api/promotions', productsRoutes);
+app.use('/api/promotions', promotionsRoutes);
+app.use('/api/categories', categoriesRoutes);
 
 // CORS Middleware
 app.use(cors());
