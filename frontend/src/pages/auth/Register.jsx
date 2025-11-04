@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import "./login.css";
+import "./register.css";
 
-export default function Login() {
+export default function Register() {
 
-    const { login } = useAuth();
+    const { login, register } = useAuth();
     const navigate = useNavigate();
 
+    const registerUrl = "http://localhost:3000/api/users/register";
+
     const initialForm = {
+        role: "",
         email: "",
         password: ""
     };
@@ -23,12 +26,12 @@ export default function Login() {
         e.preventDefault();
         console.log("Form submitted:", form);
 
-        const result = await login(form.email, form.password);
+        const result = await register(form);
         
         if (result.success) {
-            navigate("/admin");
+            navigate('/admin');
         } else {
-            alert(result.message || 'Login failed');
+            alert(result.message || 'Registration failed');
         }
         
         setForm(initialForm);
@@ -36,16 +39,28 @@ export default function Login() {
 
     return (
         <>
-            <div className="login-container">
-                <div className="login-card">
-                    <h1 className="login-title">Login</h1>
+            <div className="register-container">
+                <div className="register-card">
+                    <h1 className="register-title">Register</h1>
                     <form onSubmit={handleSubmit}>
+                        <div className="form-group">
+                            <label htmlFor="role" className="form-label">Role</label>
+                            <input
+                                type="text"
+                                className="form-input"
+                                id="role"
+                                name="role"
+                                placeholder="Enter your role"
+                                value={form.role}
+                                onChange={handleChange}
+                            />
+                        </div>
                         <div className="form-group">
                             <label htmlFor="email" className="form-label">Email address</label>
                             <input
                                 type="email"
                                 className="form-input"
-                                id="email" 
+                                id="email"
                                 name="email"
                                 placeholder="Enter your email"
                                 value={form.email}
@@ -64,13 +79,13 @@ export default function Login() {
                                 onChange={handleChange}
                             />
                         </div>
-                        <button type="submit" className="btn-primary">Login</button>
+                        <button type="submit" className="btn-primary">Register</button>
                     </form>
-                    <div className="forgot-password-link">
-                        <Link to={"/forgot-password"} className="link">Forgot Password?</Link>
+                    <div className="login-link">
+                        <Link to={'/login'} className="link">Already have an account? Login</Link>
                     </div>
                 </div>
             </div>
         </>
-    )
+    );
 }

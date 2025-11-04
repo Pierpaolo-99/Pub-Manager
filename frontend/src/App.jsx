@@ -1,28 +1,81 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { ProtectedRoute } from "./routes/protectedRoute";
-import { AuthProvider } from "./context/Authcontext";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useState } from "react";
+import { AuthProvider, useAuth } from "./context/AuthContext"; // Aggiungi useAuth
+import GlobalContext from "./context/GlobalContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import PublicRoute from "./components/PublicRoute";
+import Home from "./pages/home/Home";
 import Login from "./pages/auth/login";
-import Home from "./pages/home";
+import Register from "./pages/auth/Register";
+import Dashboard from "./pages/dashboard/Dashboard";
+import AdminDashboard from "./pages/admin/AdminDashboard";
 
-function App() {
+// Componente interno che può accedere al context
+function AppRoutes() {
+  return (
+    <Routes>
+      {/* Rotta home pubblica */}
+      <Route path="/" element={<Home />} />
+      
+      {/* Rotte autenticazione */}
+      <Route 
+        path="/login" 
+        element={
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        } 
+      />
+      
+      <Route 
+        path="/register" 
+        element={
+          <PublicRoute>
+            <Register />
+          </PublicRoute>
+        } 
+      />
+      
+      {/* Rotte protette */}
+      <Route 
+        path="/admin" 
+        element={
+          <ProtectedRoute adminOnly={true}>
+            <AdminDashboard />
+          </ProtectedRoute>
+        } 
+      />
+      
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } 
+      />
+      
+      {/* Catch-all redirect */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  const [isLoading, setIsLoading] = useState(false);
+
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/" element={<Home/>}/>
-          <Route path="/login" element={<Login />} />
-
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute roles={["admin"]}>
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </Router>
+      <GlobalContext.Provider value={{ isLoading, setIsLoading }}>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </GlobalContext.Provider>
     </AuthProvider>
   );
 }
 
-export default App;
+
+
+
+
