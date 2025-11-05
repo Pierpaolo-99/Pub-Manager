@@ -13,19 +13,26 @@ function getUsers(req, res) {
 
 // POST registra nuovo utente (usando Passport)
 function registerUser(req, res, next) {
+    console.log('📝 Registration attempt with data:', req.body);
+    
     passport.authenticate('register', (err, user, info) => {
+        console.log('🔍 Passport result - err:', err, 'user:', user, 'info:', info);
+        
         if (err) {
+            console.error('❌ Registration error:', err);
             return res.status(500).json({ success: false, message: 'Registration error', error: err });
         }
         if (!user) {
+            console.log('❌ Registration failed:', info.message);
             return res.status(400).json({ success: false, message: info.message || 'Registration failed' });
         }
         
-        // Login automatico dopo registrazione
         req.logIn(user, (err) => {
             if (err) {
+                console.error('❌ Auto-login failed:', err);
                 return res.status(500).json({ success: false, message: 'Auto-login failed', error: err });
             }
+            console.log('✅ Registration successful for user:', user.id);
             res.status(201).json({ 
                 success: true, 
                 user: user,

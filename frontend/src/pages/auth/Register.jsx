@@ -11,6 +11,7 @@ export default function Register() {
     const registerUrl = "http://localhost:3000/api/users/register";
 
     const initialForm = {
+        name: "",
         role: "",
         email: "",
         password: ""
@@ -43,6 +44,18 @@ export default function Register() {
                 <div className="register-card">
                     <h1 className="register-title">Register</h1>
                     <form onSubmit={handleSubmit}>
+                        <div className="form-group">
+                            <label htmlFor="name" className="form-label">Name</label>
+                            <input
+                                type="text"
+                                className="form-input"
+                                id="name"
+                                name="name"
+                                placeholder="Enter your name"
+                                value={form.name}
+                                onChange={handleChange}
+                            />
+                        </div>                        
                         <div className="form-group">
                             <label htmlFor="role" className="form-label">Role</label>
                             <input

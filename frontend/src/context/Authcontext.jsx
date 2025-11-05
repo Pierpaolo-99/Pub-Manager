@@ -72,31 +72,43 @@ export function AuthProvider({ children }) {
         }
     }
 
-    async function register(userData) {
-        try {
-            const response = await fetch(`${baseUrl}/register`, {
-                method: "POST",
-                credentials: "include",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
-                body: JSON.stringify(userData)
-            });
+async function register(userData) {
+    console.log('📝 Attempting registration with data:', userData);
+    
+    try {
+        const response = await fetch(`${baseUrl}/register`, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            },
+            body: JSON.stringify(userData)
+        });
 
-            const data = await response.json();
-
-            if (response.ok && data.success) {
-                setUser(data.user);
-                return { success: true, user: data.user };
-            } else {
-                return { success: false, message: data.message || 'Registration failed' };
-            }
-        } catch (error) {
-            console.error('Registration error:', error);
-            return { success: false, message: 'Network error' };
+        console.log('📡 Registration response status:', response.status);
+        
+        if (!response.ok) {
+            console.error('❌ Registration failed with status:', response.status);
+            const errorText = await response.text();
+            console.error('❌ Error response:', errorText);
+            return { success: false, message: `Server error: ${response.status}` };
         }
+
+        const data = await response.json();
+        console.log('📊 Registration response data:', data);
+
+        if (data.success) {
+            setUser(data.user);
+            return { success: true, user: data.user };
+        } else {
+            return { success: false, message: data.message || 'Registration failed' };
+        }
+    } catch (error) {
+        console.error('🚨 Registration network error:', error);
+        return { success: false, message: `Network error: ${error.message}` };
     }
+}
 
     async function logout() {
         try {
@@ -117,9 +129,9 @@ export function AuthProvider({ children }) {
     return (
         <AuthContext.Provider value={{ 
             user, 
-            login,      // ← Ora queste sono definite
-            register,   // ← Ora queste sono definite
-            logout,     // ← Ora queste sono definite
+            login,
+            register,
+            logout,
             loading,
             isAuthenticated: !!user,
             hasRole: (role) => user?.role === role,
