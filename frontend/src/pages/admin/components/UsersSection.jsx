@@ -23,18 +23,23 @@ export default function UsersSection() {
   const loadUsers = async () => {
     try {
       setError(null);
+      console.log('🔄 Loading users...');
+      
       const response = await fetch('http://localhost:3000/api/users', {
         credentials: 'include'
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Users loaded:', data.length);
         setUsers(data);
       } else {
+        const errorText = await response.text();
+        console.error('❌ Error loading users:', errorText);
         setError('Errore nel caricamento utenti');
       }
     } catch (error) {
-      console.error('Error loading users:', error);
+      console.error('🚨 Network error loading users:', error);
       setError('Errore di connessione');
     } finally {
       setLoading(false);
@@ -44,11 +49,15 @@ export default function UsersSection() {
   const filterUsers = () => {
     let filtered = users;
 
-    // Filtro per testo (nome o email)
+    // Filtro per testo (username, nome, cognome, email)
     if (searchTerm) {
+      const term = searchTerm.toLowerCase();
       filtered = filtered.filter(user =>
-        user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+        user.username?.toLowerCase().includes(term) ||
+        user.first_name?.toLowerCase().includes(term) ||
+        user.last_name?.toLowerCase().includes(term) ||
+        user.email?.toLowerCase().includes(term) ||
+        getFullName(user).toLowerCase().includes(term)
       );
     }
 
@@ -66,8 +75,16 @@ export default function UsersSection() {
     setFilteredUsers(filtered);
   };
 
-  const deleteUser = async (id, userName) => {
-    if (!window.confirm(`Sei sicuro di voler eliminare l'utente "${userName}"?`)) {
+  // Funzione helper per ottenere il nome completo
+  const getFullName = (user) => {
+    const parts = [];
+    if (user.first_name) parts.push(user.first_name);
+    if (user.last_name) parts.push(user.last_name);
+    return parts.length > 0 ? parts.join(' ') : user.username || 'Utente';
+  };
+
+  const deleteUser = async (id, userDisplay) => {
+    if (!window.confirm(`Sei sicuro di voler eliminare l'utente "${userDisplay}"?`)) {
       return;
     }
 
@@ -102,13 +119,13 @@ export default function UsersSection() {
       });
 
       if (response.ok) {
-        const updatedUser = await response.json();
         setUsers(users.map(user => 
           user.id === id ? { ...user, active: !currentStatus } : user
         ));
         alert(`Utente ${!currentStatus ? 'attivato' : 'disattivato'} con successo`);
       } else {
-        alert('Errore nell\'aggiornamento dello stato');
+        const errorData = await response.json();
+        alert(errorData.message || 'Errore nell\'aggiornamento dello stato');
       }
     } catch (error) {
       console.error('Error updating user status:', error);
@@ -116,15 +133,26 @@ export default function UsersSection() {
     }
   };
 
+  // Aggiornato per i nuovi ruoli del database
   const getRoleIcon = (role) => {
     const icons = {
       'admin': '👑',
-      'cameriere': '🍽️',
-      'cuoco': '👨‍🍳',
-      'barista': '🍹',
-      'manager': '📊'
+      'waiter': '🍽️',
+      'kitchen': '👨‍🍳',
+      'cashier': '💰'
     };
     return icons[role] || '👤';
+  };
+
+  // Traduzione ruoli per display
+  const getRoleLabel = (role) => {
+    const labels = {
+      'admin': 'Amministratore',
+      'waiter': 'Cameriere',
+      'kitchen': 'Cucina',
+      'cashier': 'Cassiere'
+    };
+    return labels[role] || role;
   };
 
   const getLastLoginText = (lastLogin) => {
@@ -181,7 +209,7 @@ export default function UsersSection() {
         </button>
       </div>
 
-      {/* Statistiche rapide */}
+      {/* Statistiche rapide - aggiornate per i nuovi ruoli */}
       <div className="users-stats">
         <div className="stat-card mini">
           <span className="stat-icon">👑</span>
@@ -196,7 +224,7 @@ export default function UsersSection() {
           <span className="stat-icon">🍽️</span>
           <div>
             <div className="stat-number">
-              {users.filter(u => u.role === 'cameriere').length}
+              {users.filter(u => u.role === 'waiter').length}
             </div>
             <div className="stat-label">Camerieri</div>
           </div>
@@ -205,9 +233,18 @@ export default function UsersSection() {
           <span className="stat-icon">👨‍🍳</span>
           <div>
             <div className="stat-number">
-              {users.filter(u => u.role === 'cuoco').length}
+              {users.filter(u => u.role === 'kitchen').length}
             </div>
-            <div className="stat-label">Cuochi</div>
+            <div className="stat-label">Cucina</div>
+          </div>
+        </div>
+        <div className="stat-card mini">
+          <span className="stat-icon">💰</span>
+          <div>
+            <div className="stat-number">
+              {users.filter(u => u.role === 'cashier').length}
+            </div>
+            <div className="stat-label">Cassieri</div>
           </div>
         </div>
         <div className="stat-card mini">
@@ -221,12 +258,12 @@ export default function UsersSection() {
         </div>
       </div>
 
-      {/* Filtri */}
+      {/* Filtri - aggiornati per i nuovi ruoli */}
       <div className="filters">
         <div className="search-container">
           <input
             type="text"
-            placeholder="Cerca per nome o email..."
+            placeholder="Cerca per username, nome, email..."
             className="search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -240,11 +277,10 @@ export default function UsersSection() {
           onChange={(e) => setRoleFilter(e.target.value)}
         >
           <option value="">Tutti i ruoli</option>
-          <option value="admin">Admin</option>
-          <option value="cameriere">Cameriere</option>
-          <option value="cuoco">Cuoco</option>
-          <option value="barista">Barista</option>
-          <option value="manager">Manager</option>
+          <option value="admin">👑 Amministratore</option>
+          <option value="waiter">🍽️ Cameriere</option>
+          <option value="kitchen">👨‍🍳 Cucina</option>
+          <option value="cashier">💰 Cassiere</option>
         </select>
 
         <select 
@@ -271,7 +307,7 @@ export default function UsersSection() {
         )}
       </div>
 
-      {/* Tabella Utenti */}
+      {/* Tabella Utenti - aggiornata per i nuovi campi */}
       <div className="table-container">
         {filteredUsers.length === 0 ? (
           <div className="empty-state">
@@ -297,7 +333,9 @@ export default function UsersSection() {
             <thead>
               <tr>
                 <th>Utente</th>
+                <th>Username</th>
                 <th>Email</th>
+                <th>Telefono</th>
                 <th>Ruolo</th>
                 <th>Stato</th>
                 <th>Ultimo Accesso</th>
@@ -313,10 +351,13 @@ export default function UsersSection() {
                         {getRoleIcon(user.role)}
                       </span>
                       <div>
-                        <div className="user-name">{user.name}</div>
+                        <div className="user-name">{getFullName(user)}</div>
                         <div className="user-id">ID: {user.id}</div>
                       </div>
                     </div>
+                  </td>
+                  <td>
+                    <span className="username">@{user.username}</span>
                   </td>
                   <td>
                     <a href={`mailto:${user.email}`} className="email-link">
@@ -324,8 +365,17 @@ export default function UsersSection() {
                     </a>
                   </td>
                   <td>
+                    {user.phone ? (
+                      <a href={`tel:${user.phone}`} className="phone-link">
+                        {user.phone}
+                      </a>
+                    ) : (
+                      <span className="text-muted">-</span>
+                    )}
+                  </td>
+                  <td>
                     <span className={`role-badge ${user.role}`}>
-                      {getRoleIcon(user.role)} {user.role}
+                      {getRoleIcon(user.role)} {getRoleLabel(user.role)}
                     </span>
                   </td>
                   <td>
@@ -359,7 +409,7 @@ export default function UsersSection() {
                       </button>
                       <button 
                         className="btn-small danger"
-                        onClick={() => deleteUser(user.id, user.name)}
+                        onClick={() => deleteUser(user.id, getFullName(user))}
                         title="Elimina utente"
                       >
                         🗑️
@@ -400,34 +450,59 @@ export default function UsersSection() {
   );
 }
 
-// Modal per aggiungere/modificare utente
+// Modal per aggiungere/modificare utente - AGGIORNATO
 function UserModal({ user, onClose, onSave }) {
   const [formData, setFormData] = useState({
-    name: user?.name || '',
+    username: user?.username || '',
+    first_name: user?.first_name || '',
+    last_name: user?.last_name || '',
     email: user?.email || '',
+    phone: user?.phone || '',
     password: '',
-    role: user?.role || 'cameriere',
+    role: user?.role || 'waiter',
     active: user?.active ?? true
   });
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState({});
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
+  const validateForm = () => {
+    const newErrors = {};
 
-    // Validazione base
-    if (!formData.name.trim() || !formData.email.trim()) {
-      alert('Nome e email sono obbligatori');
-      setSaving(false);
-      return;
+    if (!formData.username.trim()) {
+      newErrors.username = 'Username è obbligatorio';
+    } else if (formData.username.length < 3) {
+      newErrors.username = 'Username deve essere almeno 3 caratteri';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email è obbligatoria';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Email non valida';
     }
 
     if (!user && !formData.password.trim()) {
-      alert('Password è obbligatoria per nuovi utenti');
-      setSaving(false);
+      newErrors.password = 'Password è obbligatoria per nuovi utenti';
+    } else if (formData.password && formData.password.length < 6) {
+      newErrors.password = 'Password deve essere almeno 6 caratteri';
+    }
+
+    if (formData.phone && !/^\+?[\d\s\-\(\)]{8,}$/.test(formData.phone)) {
+      newErrors.phone = 'Numero di telefono non valido';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
       return;
     }
+
+    setSaving(true);
 
     try {
       const url = user 
@@ -438,9 +513,18 @@ function UserModal({ user, onClose, onSave }) {
 
       // Prepara i dati da inviare
       const dataToSend = { ...formData };
+      
+      // Per gli aggiornamenti, rimuovi password se vuota
       if (user && !formData.password.trim()) {
-        delete dataToSend.password; // Non inviare password vuota per aggiornamenti
+        delete dataToSend.password;
       }
+
+      // Rimuovi campi vuoti opzionali
+      if (!dataToSend.first_name?.trim()) dataToSend.first_name = null;
+      if (!dataToSend.last_name?.trim()) dataToSend.last_name = null;
+      if (!dataToSend.phone?.trim()) dataToSend.phone = null;
+
+      console.log('💾 Saving user:', { ...dataToSend, password: '[HIDDEN]' });
 
       const response = await fetch(url, {
         method,
@@ -452,17 +536,20 @@ function UserModal({ user, onClose, onSave }) {
       });
 
       if (response.ok) {
-        const savedUser = await response.json();
-        // Se è una registrazione, il backend potrebbe restituire l'oggetto user
-        const userData = savedUser.user || savedUser;
+        const responseData = await response.json();
+        // Il backend restituisce l'oggetto user direttamente o dentro .user
+        const userData = responseData.user || responseData;
+        
+        console.log('✅ User saved:', userData);
         onSave(userData);
         alert(user ? 'Utente aggiornato!' : 'Utente creato!');
       } else {
         const errorData = await response.json();
+        console.error('❌ Error saving user:', errorData);
         alert(errorData.message || 'Errore nel salvare l\'utente');
       }
     } catch (error) {
-      console.error('Error saving user:', error);
+      console.error('🚨 Network error saving user:', error);
       alert('Errore di rete');
     } finally {
       setSaving(false);
@@ -475,43 +562,91 @@ function UserModal({ user, onClose, onSave }) {
       ...formData,
       [name]: type === 'checkbox' ? checked : value
     });
+    
+    // Rimuovi errore quando l'utente corregge
+    if (errors[name]) {
+      setErrors({ ...errors, [name]: null });
+    }
   };
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content">
+      <div className="modal-content user-modal">
         <div className="modal-header">
           <h3 className="modal-title">
-            {user ? `Modifica ${user.name}` : 'Nuovo Utente'}
+            {user ? `Modifica ${user.username}` : 'Nuovo Utente'}
           </h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">Nome Completo *</label>
-            <input
-              type="text"
-              name="name"
-              className="form-input"
-              value={formData.name}
-              onChange={handleChange}
-              required
-              placeholder="Inserisci nome e cognome"
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Username *</label>
+              <input
+                type="text"
+                name="username"
+                className={`form-input ${errors.username ? 'error' : ''}`}
+                value={formData.username}
+                onChange={handleChange}
+                required
+                placeholder="username_unico"
+              />
+              {errors.username && <span className="error-message">{errors.username}</span>}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Email *</label>
+              <input
+                type="email"
+                name="email"
+                className={`form-input ${errors.email ? 'error' : ''}`}
+                value={formData.email}
+                onChange={handleChange}
+                required
+                placeholder="email@esempio.com"
+              />
+              {errors.email && <span className="error-message">{errors.email}</span>}
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Nome</label>
+              <input
+                type="text"
+                name="first_name"
+                className="form-input"
+                value={formData.first_name}
+                onChange={handleChange}
+                placeholder="Nome"
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Cognome</label>
+              <input
+                type="text"
+                name="last_name"
+                className="form-input"
+                value={formData.last_name}
+                onChange={handleChange}
+                placeholder="Cognome"
+              />
+            </div>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Email *</label>
+            <label className="form-label">Telefono</label>
             <input
-              type="email"
-              name="email"
-              className="form-input"
-              value={formData.email}
+              type="tel"
+              name="phone"
+              className={`form-input ${errors.phone ? 'error' : ''}`}
+              value={formData.phone}
               onChange={handleChange}
-              required
-              placeholder="email@esempio.com"
+              placeholder="+39 123 456 7890"
             />
+            {errors.phone && <span className="error-message">{errors.phone}</span>}
           </div>
 
           <div className="form-group">
@@ -522,7 +657,7 @@ function UserModal({ user, onClose, onSave }) {
               <input
                 type={showPassword ? "text" : "password"}
                 name="password"
-                className="form-input"
+                className={`form-input ${errors.password ? 'error' : ''}`}
                 value={formData.password}
                 onChange={handleChange}
                 required={!user}
@@ -536,35 +671,37 @@ function UserModal({ user, onClose, onSave }) {
                 {showPassword ? '🙈' : '👁️'}
               </button>
             </div>
+            {errors.password && <span className="error-message">{errors.password}</span>}
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Ruolo *</label>
-            <select
-              name="role"
-              className="form-select"
-              value={formData.role}
-              onChange={handleChange}
-              required
-            >
-              <option value="cameriere">🍽️ Cameriere</option>
-              <option value="cuoco">👨‍🍳 Cuoco</option>
-              <option value="barista">🍹 Barista</option>
-              <option value="manager">📊 Manager</option>
-              <option value="admin">👑 Admin</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-checkbox">
-              <input
-                type="checkbox"
-                name="active"
-                checked={formData.active}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Ruolo *</label>
+              <select
+                name="role"
+                className="form-select"
+                value={formData.role}
                 onChange={handleChange}
-              />
-              <span className="checkbox-label">Utente attivo</span>
-            </label>
+                required
+              >
+                <option value="waiter">🍽️ Cameriere</option>
+                <option value="kitchen">👨‍🍳 Cucina</option>
+                <option value="cashier">💰 Cassiere</option>
+                <option value="admin">👑 Amministratore</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-checkbox">
+                <input
+                  type="checkbox"
+                  name="active"
+                  checked={formData.active}
+                  onChange={handleChange}
+                />
+                <span className="checkbox-label">Utente attivo</span>
+              </label>
+            </div>
           </div>
 
           <div className="modal-actions">

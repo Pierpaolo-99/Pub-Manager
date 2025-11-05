@@ -4,24 +4,28 @@ const passport = require('passport');
 
 // GET tutti gli utenti - Aggiungi il campo active
 function getUsers(req, res) {
-    console.log('🔍 Getting users, authenticated:', req.isAuthenticated());
-    console.log('👤 Current user:', req.user);
-    
-    const sql = 'SELECT id, name, email, role, active, created_at, last_login FROM users';
+    const sql = `SELECT 
+        id, username, email, role, first_name, last_name, 
+        phone, active, last_login, created_at, updated_at 
+        FROM users 
+        ORDER BY created_at DESC`;
+        
     connection.query(sql, (err, results) => {
         if (err) {
-            console.error('❌ Database error in getUsers:', err);
-            return res.status(500).json({ error: err.message });
+            console.error('❌ Error fetching users:', err);
+            return res.status(500).json({ error: 'Errore nel recupero utenti' });
         }
         
-        console.log('✅ Users found:', results.length);
-        
-        // Assicurati che active sia un boolean
+        // Converti active in boolean e formatta le date
         const users = results.map(user => ({
             ...user,
-            active: Boolean(user.active)
+            active: Boolean(user.active),
+            last_login: user.last_login ? new Date(user.last_login).toISOString() : null,
+            created_at: user.created_at ? new Date(user.created_at).toISOString() : null,
+            updated_at: user.updated_at ? new Date(user.updated_at).toISOString() : null
         }));
         
+        console.log('✅ Fetched users:', users.length);
         res.json(users);
     });
 }

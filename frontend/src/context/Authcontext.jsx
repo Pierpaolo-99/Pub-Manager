@@ -47,6 +47,8 @@ export function AuthProvider({ children }) {
 
     // AGGIUNGI QUESTE FUNZIONI CHE MANCANO:
     async function login(email, password) {
+        console.log('🔑 Attempting login for email:', email);
+        
         try {
             const response = await fetch(`${baseUrl}/login`, {
                 method: "POST",
@@ -55,25 +57,63 @@ export function AuthProvider({ children }) {
                     "Content-Type": "application/json",
                     "Accept": "application/json"
                 },
-                body: JSON.stringify({ email, password })
+                body: JSON.stringify({
+                    email,
+                    password
+                })
             });
 
-            const data = await response.json();
+            console.log('📡 Login response status:', response.status);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Login failed:', errorText);
+                
+                let errorMessage = 'Errore durante il login';
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    errorMessage = errorJson.message || errorMessage;
+                } catch {
+                    if (response.status === 401) {
+                        errorMessage = 'Credenziali non valide';
+                    } else if (response.status === 500) {
+                        errorMessage = 'Errore del server';
+                    }
+                }
+                
+                return { success: false, message: errorMessage };
+            }
 
-            if (response.ok && data.success) {
+            const data = await response.json();
+            console.log('📊 Login response data:', data);
+
+            if (data.success) {
                 setUser(data.user);
                 return { success: true, user: data.user };
             } else {
-                return { success: false, message: data.message || 'Login failed' };
+                return { success: false, message: data.message || 'Login fallito' };
             }
         } catch (error) {
-            console.error('Login error:', error);
-            return { success: false, message: 'Network error' };
+            console.error('🚨 Login network error:', error);
+            return { success: false, message: 'Errore di connessione al server' };
         }
     }
 
 async function register(userData) {
     console.log('📝 Attempting registration with data:', userData);
+    
+    // Mappa i dati ai campi esatti della tabella users
+    const registrationData = {
+        email: userData.email,
+        password: userData.password,
+        username: userData.username || userData.email.split('@')[0], // Genera username se non fornito
+        role: userData.role || 'waiter', // Default waiter
+        first_name: userData.firstName || userData.first_name || null,
+        last_name: userData.lastName || userData.last_name || null,
+        phone: userData.phone || null
+    };
+    
+    console.log('📝 Sending to backend:', { ...registrationData, password: '[HIDDEN]' });
     
     try {
         const response = await fetch(`${baseUrl}/register`, {
@@ -83,16 +123,28 @@ async function register(userData) {
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             },
-            body: JSON.stringify(userData)
+            body: JSON.stringify(registrationData)
         });
 
         console.log('📡 Registration response status:', response.status);
         
         if (!response.ok) {
-            console.error('❌ Registration failed with status:', response.status);
             const errorText = await response.text();
-            console.error('❌ Error response:', errorText);
-            return { success: false, message: `Server error: ${response.status}` };
+            console.error('❌ Registration failed:', errorText);
+            
+            let errorMessage = 'Errore durante la registrazione';
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorMessage;
+            } catch {
+                if (response.status === 500) {
+                    errorMessage = 'Errore del server';
+                } else if (response.status === 400) {
+                    errorMessage = 'Dati non validi';
+                }
+            }
+            
+            return { success: false, message: errorMessage };
         }
 
         const data = await response.json();
@@ -102,11 +154,11 @@ async function register(userData) {
             setUser(data.user);
             return { success: true, user: data.user };
         } else {
-            return { success: false, message: data.message || 'Registration failed' };
+            return { success: false, message: data.message || 'Registrazione fallita' };
         }
     } catch (error) {
         console.error('🚨 Registration network error:', error);
-        return { success: false, message: `Network error: ${error.message}` };
+        return { success: false, message: 'Errore di connessione al server' };
     }
 }
 

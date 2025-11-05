@@ -1,20 +1,24 @@
 const express = require('express');
 const router = express.Router();
-const orderController = require('../controllers/orders_controller');
+const ordersController = require('../controllers/orders_controller');
 
-// TAVOLI
-router.get('/tables', orderController.getTables);
-router.patch('/tables/:id', orderController.updateTableStatus);
+// STATS PRIMA di /:id per evitare conflitti
+router.get('/stats', ordersController.getOrdersStats);             // GET /api/orders/stats
 
-// ORDINI
-router.post('/orders', orderController.createOrder);
-router.get('/orders/:table_id', orderController.getOrdersByTable);
-router.patch('/orders/:id', orderController.updateOrderStatus);
-router.delete('/orders/:id', orderController.deleteOrder);
+// Route per l'admin dashboard
+router.get('/', ordersController.getAllOrders);                    // GET /api/orders
+router.get('/:id', ordersController.getOrderById);                 // GET /api/orders/:id
+router.post('/simple', ordersController.createSimpleOrder);        // POST /api/orders/simple
+router.patch('/:id', ordersController.updateOrderStatus);          // PATCH /api/orders/:id
+router.delete('/:id', ordersController.deleteOrder);               // DELETE /api/orders/:id
 
-// ORDER ITEMS
-router.post('/order-items', orderController.addItemToOrder);
-router.patch('/order-items/:id', orderController.updateOrderItem);
-router.delete('/order-items/:id', orderController.deleteOrderItem);
+// Route esistenti per tavoli (con prefisso diverso)
+router.get('/tables/all', ordersController.getTables);                 
+router.patch('/tables/:id', ordersController.updateTableStatus);   
+router.post('/create', ordersController.createOrder);              // Cambiato da '/' 
+router.get('/table/:table_id', ordersController.getOrdersByTable); 
+router.post('/items', ordersController.addItemToOrder);            
+router.put('/items/:id', ordersController.updateOrderItem);        
+router.delete('/items/:id', ordersController.deleteOrderItem);     
 
 module.exports = router;
