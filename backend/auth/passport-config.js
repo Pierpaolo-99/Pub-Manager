@@ -11,14 +11,19 @@ function initializePassport(passport) {
     },
         function (email, password, done) {
 
-            // Query che include anche il ruolo
-            const sql = 'SELECT id, email, password, role FROM users WHERE email = ?';
+            // Query che include anche il ruolo e active
+            const sql = 'SELECT id, name, email, password, role, active FROM users WHERE email = ?';
             connection.query(sql, [email], (err, results) => {
                 if (err) return done(err)
 
                 if (results.length === 0) return done(null, false, { message: 'no user with that email' })
 
                 const user = results[0]
+
+                // Controlla se l'utente è attivo
+                if (!user.active) {
+                    return done(null, false, { message: 'account deactivated' })
+                }
 
                 bcrypt.compare(password, user.password, (err, isMatch) => {
                     if (err) return done(err)
@@ -32,7 +37,7 @@ function initializePassport(passport) {
             })
         }));
 
-    // Register strategy (con ruolo di default)
+    // Register strategy - Correggi i campi
     passport.use('register', new LocalStrategy({
         usernameField: 'email',
         passwordField: 'password',
@@ -50,7 +55,8 @@ function initializePassport(passport) {
                     name: req.body.name,
                     email: email,
                     password: hashedPassword,
-                    role: req.body.role || 'user' // Ruolo di default 'user'
+                    role: req.body.role || 'cameriere', // Cambia default da 'user' a 'cameriere'
+                    active: 1 // Aggiungi campo active
                 }
 
                 const insertSql = 'INSERT INTO users SET ?'
@@ -59,6 +65,7 @@ function initializePassport(passport) {
 
                     newUser.id = result.insertId;
                     delete newUser.password; // Rimuovi la password
+                    newUser.active = Boolean(newUser.active); // Converti a boolean
                     return done(null, newUser);
                 })
             })
@@ -70,15 +77,17 @@ function initializePassport(passport) {
         done(null, user.id);
     });
 
-    // Deserialize user (con ruoli)
+    // Deserialize user - Correggi la query
     passport.deserializeUser(function (id, done) {
-        // Include il ruolo nella query
-        const sql = 'SELECT id, username, email, role FROM users WHERE id = ?';
+        // Correggi: usa 'name' invece di 'username'
+        const sql = 'SELECT id, name, email, role, active FROM users WHERE id = ?';
         connection.query(sql, [id], function (err, results) {
             if (err) return done(err);
             if (results.length === 0) return done(null, false, { message: 'No user found' });
 
-            done(null, results[0]);
+            const user = results[0];
+            user.active = Boolean(user.active); // Converti a boolean
+            done(null, user);
         })
     })
 }

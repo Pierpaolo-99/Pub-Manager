@@ -2,12 +2,27 @@ const connection = require('../database/db');
 const bcrypt = require('bcrypt');
 const passport = require('passport');
 
-// GET tutti gli utenti
+// GET tutti gli utenti - Aggiungi il campo active
 function getUsers(req, res) {
-    const sql = 'SELECT id, name, email, role, created_at FROM users';
+    console.log('🔍 Getting users, authenticated:', req.isAuthenticated());
+    console.log('👤 Current user:', req.user);
+    
+    const sql = 'SELECT id, name, email, role, active, created_at, last_login FROM users';
     connection.query(sql, (err, results) => {
-        if (err) return res.status(500).json({ error: err });
-        res.json(results);
+        if (err) {
+            console.error('❌ Database error in getUsers:', err);
+            return res.status(500).json({ error: err.message });
+        }
+        
+        console.log('✅ Users found:', results.length);
+        
+        // Assicurati che active sia un boolean
+        const users = results.map(user => ({
+            ...user,
+            active: Boolean(user.active)
+        }));
+        
+        res.json(users);
     });
 }
 
@@ -65,10 +80,12 @@ function loginUser(req, res, next) {
     })(req, res, next);
 }
 
-// PATCH aggiornamento utente
+// PATCH aggiornamento utente - Correggi la query SQL
 function updateUser(req, res) {
     const { id } = req.params;
     const { name, email, password, role, active } = req.body;
+    
+    console.log('Updating user:', { id, name, email, role, active });
     
     // Verifica che l'utente sia autorizzato a modificare
     if (!req.isAuthenticated()) {
@@ -80,21 +97,35 @@ function updateUser(req, res) {
         return res.status(403).json({ success: false, message: 'Not authorized' });
     }
     
-    const hashedPassword = password ? bcrypt.hashSync(password, 10) : undefined;
-
     let sql, params;
-    if (hashedPassword) {
-        sql = 'UPDATE users SET name = ?, email = ?, password_hash = ?, role = ?, active = ? WHERE id = ?';
-        params = [name, email, hashedPassword, role, active, id];
+    
+    if (password && password.trim()) {
+        const hashedPassword = bcrypt.hashSync(password, 10);
+        sql = 'UPDATE users SET name = ?, email = ?, password = ?, role = ?, active = ? WHERE id = ?';
+        params = [name, email, hashedPassword, role, active ? 1 : 0, id];
     } else {
         sql = 'UPDATE users SET name = ?, email = ?, role = ?, active = ? WHERE id = ?';
-        params = [name, email, role, active, id];
+        params = [name, email, role, active ? 1 : 0, id];
     }
 
     connection.query(sql, params, (err, results) => {
-        if (err) return res.status(500).json({ success: false, error: err });
-        if (results.affectedRows === 0) return res.status(404).json({ success: false, message: 'User not found' });
-        res.json({ success: true, id, name, email, role, active });
+        if (err) {
+            console.error('Update error:', err);
+            return res.status(500).json({ success: false, error: err });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        // Restituisci l'utente aggiornato
+        res.json({ 
+            success: true, 
+            id: parseInt(id), 
+            name, 
+            email, 
+            role, 
+            active: Boolean(active) 
+        });
     });
 }
 
