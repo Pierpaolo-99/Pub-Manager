@@ -49,6 +49,8 @@ const variantsRoutes = require('./routes/variants');
 const financialRoutes = require('./routes/financial');
 const ingredientsRoutes = require('./routes/ingredients');
 const ingredientsStockRoutes = require('./routes/ingredients_stock');
+const purchaseOrdersRoutes = require('./routes/purchase_orders');
+const suppliersRoutes = require('./routes/suppliers');
 
 app.use('/api/users', usersRoutes);
 app.use('/api/categories', categoriesRoutes);
@@ -60,7 +62,9 @@ app.use('/api/stock', stockRoutes);
 app.use('/api/variants', variantsRoutes);
 app.use('/api/financial', financialRoutes);
 app.use('/api/ingredients', ingredientsRoutes);
-app.use('/api/ingredients', ingredientsStockRoutes);
+app.use('/api/ingredients-stock', ingredientsStockRoutes);
+app.use('/api/purchase-orders', purchaseOrdersRoutes);
+app.use('/api/suppliers', suppliersRoutes);
 
 // Test route
 app.get('/', (req, res) => {

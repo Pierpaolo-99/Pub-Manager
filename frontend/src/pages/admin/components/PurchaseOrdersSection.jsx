@@ -1,38 +1,126 @@
 import { useState, useEffect } from "react";
+import "./PurchaseOrdersSection.css";
 
 export default function PurchaseOrdersSection() {
   const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [viewingOrder, setViewingOrder] = useState(null);
+  
+  const [filters, setFilters] = useState({
+    search: '',
+    status: 'all',
+    supplier: 'all',
+    date_from: '',
+    date_to: ''
+  });
+
+  const [suppliers, setSuppliers] = useState([]);
 
   useEffect(() => {
-    const mockOrders = [
-      { 
-        id: 1, 
-        number: 'ORD-2024-001',
-        supplier: 'Ortofrutta Rossi',
-        date: '2024-11-05',
-        total: 125.50,
-        status: 'pending',
-        items: 3
-      },
-      { 
-        id: 2, 
-        number: 'ORD-2024-002',
-        supplier: 'Caseificio Bianchi',
-        date: '2024-11-03',
-        total: 89.00,
-        status: 'delivered',
-        items: 2
-      },
-    ];
-    setOrders(mockOrders);
-  }, []);
+    fetchOrders();
+    fetchSuppliers();
+  }, [filters]);
+
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && value !== 'all') {
+          params.append(key, value);
+        }
+      });
+      
+      const response = await fetch(`http://localhost:3000/api/purchase-orders?${params}`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Errore HTTP: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setOrders(data.orders || []);
+      setStats(data.stats || {});
+      
+    } catch (err) {
+      console.error('❌ Error fetching orders:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchSuppliers = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/api/purchase-orders/suppliers', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSuppliers(data.suppliers || []);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching suppliers:', err);
+    }
+  };
+
+  const handleDeleteOrder = async (id, orderNumber) => {
+    if (!confirm(`Sei sicuro di voler eliminare l'ordine ${orderNumber}?`)) return;
+    
+    try {
+      const response = await fetch(`http://localhost:3000/api/purchase-orders/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Errore nell\'eliminazione');
+      }
+      
+      await fetchOrders();
+      console.log(`✅ Deleted order: ${orderNumber}`);
+    } catch (err) {
+      console.error('❌ Error deleting order:', err);
+      alert(`Errore: ${err.message}`);
+    }
+  };
+
+  const handleStatusChange = async (orderId, newStatus) => {
+    try {
+      const response = await fetch(`http://localhost:3000/api/purchase-orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      if (!response.ok) {
+        throw new Error('Errore nell\'aggiornamento stato');
+      }
+
+      await fetchOrders();
+    } catch (err) {
+      console.error('❌ Error updating status:', err);
+      alert(`Errore: ${err.message}`);
+    }
+  };
 
   const getStatusIcon = (status) => {
     const icons = {
       'draft': '📝',
-      'pending': '⏳',
+      'sent': '📤',
       'confirmed': '✅',
       'delivered': '📦',
+      'invoiced': '📄',
+      'paid': '💰',
       'cancelled': '❌'
     };
     return icons[status] || '❓';
@@ -41,33 +129,185 @@ export default function PurchaseOrdersSection() {
   const getStatusLabel = (status) => {
     const labels = {
       'draft': 'Bozza',
-      'pending': 'In attesa',
+      'sent': 'Inviato',
       'confirmed': 'Confermato',
       'delivered': 'Consegnato',
+      'invoiced': 'Fatturato',
+      'paid': 'Pagato',
       'cancelled': 'Annullato'
     };
     return labels[status] || status;
   };
 
+  const getStatusColor = (status) => {
+    const colors = {
+      'draft': 'secondary',
+      'sent': 'info',
+      'confirmed': 'warning',
+      'delivered': 'primary',
+      'invoiced': 'success',
+      'paid': 'success',
+      'cancelled': 'danger'
+    };
+    return colors[status] || 'secondary';
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('it-IT', {
+      style: 'currency',
+      currency: 'EUR'
+    }).format(amount || 0);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('it-IT');
+  };
+
+  if (loading) {
+    return (
+      <div className="purchase-orders-section">
+        <div className="loading-spinner">
+          <div className="spinner"></div>
+          <p>Caricamento ordini acquisto...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="purchase-orders-section">
+      {/* Header */}
       <div className="section-header">
-        <div>
-          <h2>📋 Ordini Acquisto</h2>
-          <p className="section-subtitle">{orders.length} ordini totali</p>
+        <div className="header-left">
+          <h2>🛒 Ordini Acquisto</h2>
+          <p className="section-subtitle">
+            {stats.total || 0} ordini • {stats.pending || 0} in attesa • 
+            Valore totale: {formatCurrency(stats.totalValue)}
+          </p>
         </div>
-        <button className="btn primary">+ Nuovo Ordine</button>
+        <button 
+          className="btn primary" 
+          onClick={() => setShowOrderModal(true)}
+        >
+          ➕ Nuovo Ordine
+        </button>
       </div>
 
+      {/* Stats rapide */}
+      <div className="order-stats">
+        <div className="stat-card">
+          <span className="stat-icon">📝</span>
+          <div>
+            <div className="stat-number">{stats.draft || 0}</div>
+            <div className="stat-label">Bozze</div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon">📤</span>
+          <div>
+            <div className="stat-number">{stats.sent || 0}</div>
+            <div className="stat-label">Inviati</div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon">✅</span>
+          <div>
+            <div className="stat-number">{stats.confirmed || 0}</div>
+            <div className="stat-label">Confermati</div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon">📦</span>
+          <div>
+            <div className="stat-number">{stats.delivered || 0}</div>
+            <div className="stat-label">Consegnati</div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon">💰</span>
+          <div>
+            <div className="stat-number">{stats.paid || 0}</div>
+            <div className="stat-label">Pagati</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filtri */}
+      <div className="filters-section">
+        <div className="search-container">
+          <input
+            type="text"
+            placeholder="Cerca ordini, fornitori, numero ordine..."
+            value={filters.search}
+            onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+            className="search-input"
+          />
+          <span className="search-icon">🔍</span>
+        </div>
+
+        <select
+          value={filters.status}
+          onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+          className="filter-select"
+        >
+          <option value="all">Tutti gli stati</option>
+          <option value="draft">Bozze</option>
+          <option value="sent">Inviati</option>
+          <option value="confirmed">Confermati</option>
+          <option value="delivered">Consegnati</option>
+          <option value="invoiced">Fatturati</option>
+          <option value="paid">Pagati</option>
+          <option value="cancelled">Annullati</option>
+        </select>
+
+        <select
+          value={filters.supplier}
+          onChange={(e) => setFilters(prev => ({ ...prev, supplier: e.target.value }))}
+          className="filter-select"
+        >
+          <option value="all">Tutti i fornitori</option>
+          {suppliers.map(supplier => (
+            <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+          ))}
+        </select>
+
+        <input
+          type="date"
+          value={filters.date_from}
+          onChange={(e) => setFilters(prev => ({ ...prev, date_from: e.target.value }))}
+          className="filter-date"
+          placeholder="Da"
+        />
+
+        <input
+          type="date"
+          value={filters.date_to}
+          onChange={(e) => setFilters(prev => ({ ...prev, date_to: e.target.value }))}
+          className="filter-date"
+          placeholder="A"
+        />
+      </div>
+
+      {/* Errori */}
+      {error && (
+        <div className="error-banner">
+          <span className="error-icon">⚠️</span>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="error-close">×</button>
+        </div>
+      )}
+
+      {/* Tabella ordini */}
       <div className="table-container">
         <table className="table">
           <thead>
             <tr>
-              <th>Numero Ordine</th>
+              <th>Ordine</th>
               <th>Fornitore</th>
-              <th>Data</th>
+              <th>Date</th>
               <th>Articoli</th>
-              <th>Totale</th>
+              <th>Importo</th>
               <th>Stato</th>
               <th>Azioni</th>
             </tr>
@@ -76,28 +316,648 @@ export default function PurchaseOrdersSection() {
             {orders.map(order => (
               <tr key={order.id}>
                 <td>
-                  <strong>{order.number}</strong>
+                  <div className="order-info">
+                    <span className="order-number">{order.order_number}</span>
+                    {order.invoice_number && (
+                      <span className="invoice-number">Fatt: {order.invoice_number}</span>
+                    )}
+                  </div>
                 </td>
-                <td>{order.supplier}</td>
-                <td>{new Date(order.date).toLocaleDateString('it-IT')}</td>
-                <td>{order.items} articoli</td>
-                <td>€{order.total.toFixed(2)}</td>
                 <td>
-                  <span className={`status-badge ${order.status}`}>
-                    {getStatusIcon(order.status)} {getStatusLabel(order.status)}
-                  </span>
+                  <div className="supplier-info">
+                    <span className="supplier-name">{order.supplier_name}</span>
+                    {order.payment_terms && (
+                      <span className="payment-terms">{order.payment_terms}</span>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  <div className="date-info">
+                    <span className="order-date">Ord: {formatDate(order.order_date)}</span>
+                    {order.expected_delivery_date && (
+                      <span className="delivery-date">
+                        Cons: {formatDate(order.expected_delivery_date)}
+                      </span>
+                    )}
+                    {order.actual_delivery_date && (
+                      <span className="actual-delivery">
+                        ✅ {formatDate(order.actual_delivery_date)}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  <span className="items-count">{order.items_count || 0} articoli</span>
+                </td>
+                <td>
+                  <div className="amount-info">
+                    <span className="total-amount">{formatCurrency(order.total)}</span>
+                    {order.subtotal !== order.total && (
+                      <span className="subtotal">Sub: {formatCurrency(order.subtotal)}</span>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  <select
+                    value={order.status}
+                    onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                    className={`status-select ${getStatusColor(order.status)}`}
+                  >
+                    <option value="draft">📝 Bozza</option>
+                    <option value="sent">📤 Inviato</option>
+                    <option value="confirmed">✅ Confermato</option>
+                    <option value="delivered">📦 Consegnato</option>
+                    <option value="invoiced">📄 Fatturato</option>
+                    <option value="paid">💰 Pagato</option>
+                    <option value="cancelled">❌ Annullato</option>
+                  </select>
                 </td>
                 <td>
                   <div className="action-buttons">
-                    <button className="btn-small primary">👁️</button>
-                    <button className="btn-small secondary">✏️</button>
-                    <button className="btn-small info">📧</button>
+                    <button 
+                      className="btn-small primary"
+                      onClick={() => setViewingOrder(order)}
+                      title="Visualizza"
+                    >
+                      👁️
+                    </button>
+                    <button 
+                      className="btn-small secondary"
+                      onClick={() => setEditingOrder(order)}
+                      title="Modifica"
+                    >
+                      ✏️
+                    </button>
+                    <button 
+                      className="btn-small info"
+                      onClick={() => {/* TODO: Invia email */}}
+                      title="Invia"
+                    >
+                      📧
+                    </button>
+                    <button 
+                      className="btn-small success"
+                      onClick={() => {/* TODO: Stampa */}}
+                      title="Stampa"
+                    >
+                      🖨️
+                    </button>
+                    <button 
+                      className="btn-small danger"
+                      onClick={() => handleDeleteOrder(order.id, order.order_number)}
+                      title="Elimina"
+                    >
+                      🗑️
+                    </button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Empty state */}
+      {orders.length === 0 && !loading && (
+        <div className="empty-state">
+          <span className="empty-icon">🛒</span>
+          <h3>Nessun ordine trovato</h3>
+          <p>Inizia creando il tuo primo ordine di acquisto</p>
+          <button 
+            className="btn primary" 
+            onClick={() => setShowOrderModal(true)}
+          >
+            ➕ Crea Primo Ordine
+          </button>
+        </div>
+      )}
+
+      {/* Modal Create/Edit Order */}
+      {(showOrderModal || editingOrder) && (
+        <OrderModal
+          order={editingOrder}
+          suppliers={suppliers}
+          onClose={() => {
+            setShowOrderModal(false);
+            setEditingOrder(null);
+          }}
+          onSave={() => {
+            setShowOrderModal(false);
+            setEditingOrder(null);
+            fetchOrders();
+          }}
+        />
+      )}
+
+      {/* Modal View Order */}
+      {viewingOrder && (
+        <OrderViewModal
+          order={viewingOrder}
+          onClose={() => setViewingOrder(null)}
+          onEdit={() => {
+            setEditingOrder(viewingOrder);
+            setViewingOrder(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modal per creare/modificare ordine
+function OrderModal({ order, suppliers, onClose, onSave }) {
+  const [formData, setFormData] = useState({
+    supplier_id: '',
+    order_date: new Date().toISOString().split('T')[0],
+    expected_delivery_date: '',
+    payment_method: '',
+    payment_terms: '',
+    delivery_address: '',
+    notes: '',
+    items: [],
+    ...order
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [ingredients, setIngredients] = useState([]);
+
+  useEffect(() => {
+    fetchIngredients();
+  }, []);
+
+  const fetchIngredients = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/api/ingredients?active=true', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setIngredients(data.ingredients || []);
+      }
+    } catch (err) {
+      console.error('Error fetching ingredients:', err);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const url = order 
+        ? `http://localhost:3000/api/purchase-orders/${order.id}`
+        : 'http://localhost:3000/api/purchase-orders';
+      
+      const method = order ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(formData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Errore nel salvataggio');
+      }
+
+      onSave();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const addItem = () => {
+    setFormData(prev => ({
+      ...prev,
+      items: [...prev.items, {
+        ingredient_id: '',
+        quantity: '',
+        unit: 'kg',
+        unit_price: '',
+        notes: ''
+      }]
+    }));
+  };
+
+  const removeItem = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateItem = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  const calculateTotal = () => {
+    return formData.items.reduce((total, item) => {
+      const itemTotal = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0);
+      return total + itemTotal;
+    }, 0);
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content extra-large">
+        <div className="modal-header">
+          <h3>{order ? 'Modifica Ordine' : 'Nuovo Ordine Acquisto'}</h3>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            {error && (
+              <div className="error-message">❌ {error}</div>
+            )}
+
+            <div className="form-sections">
+              {/* Sezione principale */}
+              <div className="form-section">
+                <h4>📋 Informazioni Ordine</h4>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Fornitore *</label>
+                    <select
+                      name="supplier_id"
+                      value={formData.supplier_id}
+                      onChange={handleChange}
+                      className="form-select"
+                      required
+                    >
+                      <option value="">Seleziona fornitore</option>
+                      {suppliers.map(supplier => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Data Ordine *</label>
+                    <input
+                      type="date"
+                      name="order_date"
+                      value={formData.order_date}
+                      onChange={handleChange}
+                      className="form-input"
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Consegna Prevista</label>
+                    <input
+                      type="date"
+                      name="expected_delivery_date"
+                      value={formData.expected_delivery_date}
+                      onChange={handleChange}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">Metodo Pagamento</label>
+                    <select
+                      name="payment_method"
+                      value={formData.payment_method}
+                      onChange={handleChange}
+                      className="form-select"
+                    >
+                      <option value="">Seleziona metodo</option>
+                      <option value="cash">Contanti</option>
+                      <option value="bank_transfer">Bonifico</option>
+                      <option value="check">Assegno</option>
+                      <option value="credit_card">Carta di Credito</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Termini Pagamento</label>
+                    <input
+                      type="text"
+                      name="payment_terms"
+                      value={formData.payment_terms}
+                      onChange={handleChange}
+                      className="form-input"
+                      placeholder="es. 30 giorni"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Indirizzo Consegna</label>
+                  <textarea
+                    name="delivery_address"
+                    value={formData.delivery_address}
+                    onChange={handleChange}
+                    className="form-textarea"
+                    rows="2"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Note</label>
+                  <textarea
+                    name="notes"
+                    value={formData.notes}
+                    onChange={handleChange}
+                    className="form-textarea"
+                    rows="2"
+                  />
+                </div>
+              </div>
+
+              {/* Sezione articoli */}
+              <div className="form-section">
+                <div className="section-header-inline">
+                  <h4>📦 Articoli Ordine</h4>
+                  <button type="button" className="btn-small primary" onClick={addItem}>
+                    ➕ Aggiungi Articolo
+                  </button>
+                </div>
+
+                <div className="items-list">
+                  {formData.items.map((item, index) => (
+                    <div key={index} className="item-row">
+                      <div className="item-fields">
+                        <select
+                          value={item.ingredient_id}
+                          onChange={(e) => updateItem(index, 'ingredient_id', e.target.value)}
+                          className="form-select"
+                          required
+                        >
+                          <option value="">Seleziona ingrediente</option>
+                          {ingredients.map(ingredient => (
+                            <option key={ingredient.id} value={ingredient.id}>
+                              {ingredient.name} ({ingredient.unit})
+                            </option>
+                          ))}
+                        </select>
+
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateItem(index, 'quantity', e.target.value)}
+                          placeholder="Quantità"
+                          className="form-input"
+                          step="0.001"
+                          required
+                        />
+
+                        <select
+                          value={item.unit}
+                          onChange={(e) => updateItem(index, 'unit', e.target.value)}
+                          className="form-select"
+                          required
+                        >
+                          <option value="g">g</option>
+                          <option value="kg">kg</option>
+                          <option value="ml">ml</option>
+                          <option value="l">l</option>
+                          <option value="pz">pz</option>
+                          <option value="conf">conf</option>
+                        </select>
+
+                        <input
+                          type="number"
+                          value={item.unit_price}
+                          onChange={(e) => updateItem(index, 'unit_price', e.target.value)}
+                          placeholder="Prezzo unitario"
+                          className="form-input"
+                          step="0.0001"
+                          required
+                        />
+
+                        <input
+                          type="text"
+                          value={item.notes}
+                          onChange={(e) => updateItem(index, 'notes', e.target.value)}
+                          placeholder="Note"
+                          className="form-input"
+                        />
+
+                        <div className="item-total">
+                          €{((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)).toFixed(2)}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn-small danger"
+                        onClick={() => removeItem(index)}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {formData.items.length > 0 && (
+                  <div className="order-total">
+                    <strong>Totale Ordine: €{calculateTotal().toFixed(2)}</strong>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn secondary" onClick={onClose}>
+              Annulla
+            </button>
+            <button type="submit" className="btn primary" disabled={loading}>
+              {loading ? 'Salvando...' : order ? 'Aggiorna Ordine' : 'Crea Ordine'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Modal per visualizzare ordine
+function OrderViewModal({ order, onClose, onEdit }) {
+  const [orderDetails, setOrderDetails] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchOrderDetails();
+  }, [order.id]);
+
+  const fetchOrderDetails = async () => {
+    try {
+      const response = await fetch(`http://localhost:3000/api/purchase-orders/${order.id}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setOrderDetails(data);
+      }
+    } catch (err) {
+      console.error('Error fetching order details:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('it-IT', {
+      style: 'currency',
+      currency: 'EUR'
+    }).format(amount || 0);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('it-IT');
+  };
+
+  if (loading) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal-content large">
+          <div className="loading-spinner">
+            <div className="spinner"></div>
+            <p>Caricamento dettagli ordine...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content large">
+        <div className="modal-header">
+          <h3>📋 Dettagli Ordine - {order.order_number}</h3>
+          <div className="header-actions">
+            <button className="btn-small primary" onClick={onEdit}>
+              ✏️ Modifica
+            </button>
+            <button className="modal-close" onClick={onClose}>×</button>
+          </div>
+        </div>
+
+        <div className="modal-body">
+          <div className="order-details">
+            {/* Info principale */}
+            <div className="details-section">
+              <h4>ℹ️ Informazioni Generali</h4>
+              <div className="details-grid">
+                <div className="detail-item">
+                  <label>Numero Ordine:</label>
+                  <span>{orderDetails?.order_number}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Fornitore:</label>
+                  <span>{orderDetails?.supplier_name}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Data Ordine:</label>
+                  <span>{formatDate(orderDetails?.order_date)}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Consegna Prevista:</label>
+                  <span>{formatDate(orderDetails?.expected_delivery_date)}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Stato:</label>
+                  <span className={`status-badge ${orderDetails?.status}`}>
+                    {orderDetails?.status}
+                  </span>
+                </div>
+                <div className="detail-item">
+                  <label>Totale:</label>
+                  <span className="total-amount">{formatCurrency(orderDetails?.total)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Articoli */}
+            <div className="details-section">
+              <h4>📦 Articoli Ordinati</h4>
+              <div className="items-table">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Ingrediente</th>
+                      <th>Quantità</th>
+                      <th>Prezzo Unit.</th>
+                      <th>Totale</th>
+                      <th>Ricevuto</th>
+                      <th>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orderDetails?.items?.map(item => (
+                      <tr key={item.id}>
+                        <td>{item.ingredient_name}</td>
+                        <td>{item.quantity} {item.unit}</td>
+                        <td>{formatCurrency(item.unit_price)}</td>
+                        <td>{formatCurrency(item.total_price)}</td>
+                        <td>{item.received_quantity || 0} {item.unit}</td>
+                        <td>{item.notes || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Note e dettagli aggiuntivi */}
+            {(orderDetails?.notes || orderDetails?.delivery_address) && (
+              <div className="details-section">
+                <h4>📝 Dettagli Aggiuntivi</h4>
+                {orderDetails.delivery_address && (
+                  <div className="detail-item">
+                    <label>Indirizzo Consegna:</label>
+                    <span>{orderDetails.delivery_address}</span>
+                  </div>
+                )}
+                {orderDetails.notes && (
+                  <div className="detail-item">
+                    <label>Note:</label>
+                    <span>{orderDetails.notes}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn secondary" onClick={onClose}>
+            Chiudi
+          </button>
+          <button className="btn info">
+            🖨️ Stampa
+          </button>
+          <button className="btn success">
+            📧 Invia Email
+          </button>
+        </div>
       </div>
     </div>
   );
