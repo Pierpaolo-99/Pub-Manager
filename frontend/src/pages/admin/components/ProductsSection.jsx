@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import "./ProductsSection.css";
 
 export default function ProductsSection() {
   const [products, setProducts] = useState([]);
