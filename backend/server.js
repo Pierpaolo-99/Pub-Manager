@@ -46,6 +46,7 @@ const allergensRoutes = require('./routes/allergens');
 const promotionsRoutes = require('./routes/promotions');
 const stockRoutes = require('./routes/stock');
 const variantsRoutes = require('./routes/variants');
+const financialRoutes = require('./routes/financial');
 
 app.use('/api/users', usersRoutes);
 app.use('/api/categories', categoriesRoutes);
@@ -55,6 +56,7 @@ app.use('/api/allergens', allergensRoutes);
 app.use('/api/promotions', promotionsRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/variants', variantsRoutes);
+app.use('/api/financial', financialRoutes);
 
 // Test route
 app.get('/', (req, res) => {
