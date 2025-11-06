@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 
-// Sezioni esistenti
+// Sezioni 
 import OverviewSection from "./components/OverviewSection";
 import UsersSection from "./components/UsersSection";
 import ProductsSection from "./components/ProductsSection";
@@ -11,8 +11,6 @@ import StockSection from "./components/StockSection";
 import VariantsSection from "./components/VariantsSection";
 import AllergensSection from "./components/AllergensSection";
 import PromotionsSection from "./components/PromotionsSection";
-
-// NUOVE SEZIONI 
 import TablesSection from "./components/TablesSection";
 import IngredientsSection from "./components/IngredientsSection";
 import RecipesSection from "./components/RecipesSection";
@@ -168,16 +166,6 @@ export default function AdminDashboard() {
 
         {/* Main Content */}
         <main className="dashboard-main">
-          <div className="content-header">
-            <h2>
-              {sectionGroups
-                .flatMap(g => g.sections)
-                .find(s => s.id === activeSection)?.icon} {' '}
-              {sectionGroups
-                .flatMap(g => g.sections)
-                .find(s => s.id === activeSection)?.name}
-            </h2>
-          </div>
           <div className="content-body">
             {renderContent()}
           </div>

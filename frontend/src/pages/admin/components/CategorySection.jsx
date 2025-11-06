@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import "./CategorySection.css"; // Importa il CSS specifico
 
 export default function CategorySection() {
   const [categories, setCategories] = useState([]);
