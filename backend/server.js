@@ -54,6 +54,7 @@ const suppliersRoutes = require('./routes/suppliers');
 const recipesRoutes = require('./routes/recipes');
 const reportsRoutes = require('./routes/reports');
 const settingsRoutes = require('./routes/settings');
+const stockMovementsRoutes = require('./routes/stock_movements');
 
 app.use('/api/users', usersRoutes);
 app.use('/api/categories', categoriesRoutes);
@@ -71,6 +72,7 @@ app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/recipes', recipesRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/stock-movements', stockMovementsRoutes);
 
 // Test route
 app.get('/', (req, res) => {
