@@ -51,6 +51,7 @@ const ingredientsRoutes = require('./routes/ingredients');
 const ingredientsStockRoutes = require('./routes/ingredients_stock');
 const purchaseOrdersRoutes = require('./routes/purchase_orders');
 const suppliersRoutes = require('./routes/suppliers');
+const recipesRoutes = require('./routes/recipes');
 
 app.use('/api/users', usersRoutes);
 app.use('/api/categories', categoriesRoutes);
@@ -65,7 +66,7 @@ app.use('/api/ingredients', ingredientsRoutes);
 app.use('/api/ingredients-stock', ingredientsStockRoutes);
 app.use('/api/purchase-orders', purchaseOrdersRoutes);
 app.use('/api/suppliers', suppliersRoutes);
-
+app.use('/api/recipes', recipesRoutes);
 // Test route
 app.get('/', (req, res) => {
     res.json({ message: 'Pub Manager API is running!' });
