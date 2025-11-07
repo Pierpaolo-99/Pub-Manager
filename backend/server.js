@@ -55,6 +55,7 @@ const recipesRoutes = require('./routes/recipes');
 const reportsRoutes = require('./routes/reports');
 const settingsRoutes = require('./routes/settings');
 const stockMovementsRoutes = require('./routes/stock_movements');
+const tablesRoutes = require('./routes/tables');
 
 app.use('/api/users', usersRoutes);
 app.use('/api/categories', categoriesRoutes);
@@ -73,6 +74,7 @@ app.use('/api/recipes', recipesRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/stock-movements', stockMovementsRoutes);
+app.use('/api/tables', tablesRoutes);
 
 // Test route
 app.get('/', (req, res) => {
