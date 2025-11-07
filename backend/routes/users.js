@@ -1,16 +1,38 @@
 const express = require('express');
 const router = express.Router();
-const userController = require('../controllers/users_controller');
+const usersController = require('../controllers/users_controller');
 
-// CRUD utenti
-router.get('/', userController.getUsers);
-router.post('/register', userController.registerUser);
-router.post('/login', userController.loginUser);
-router.patch('/:id', userController.updateUser);
-router.put('/:id', userController.updateUser); // Aggiungi questa linea
-router.delete('/:id', userController.deleteUser);
+// Assicurati che tutte le funzioni esistano nel controller
+console.log('Available controller methods:', Object.keys(usersController));
 
-router.get('/me', userController.checkAuthStatus);
-router.post('/logout', userController.logout);
+// Route per verificare autenticazione
+router.get('/me', usersController.getCurrentUser || ((req, res) => {
+    res.status(501).json({ error: 'getCurrentUser not implemented' });
+}));
+
+// GET all users
+router.get('/', usersController.getAllUsers || ((req, res) => {
+    res.status(501).json({ error: 'getAllUsers not implemented' });
+}));
+
+// GET specific user
+router.get('/:id', usersController.getUserById || ((req, res) => {
+    res.status(501).json({ error: 'getUserById not implemented' });
+}));
+
+// POST new user
+router.post('/', usersController.createUser || ((req, res) => {
+    res.status(501).json({ error: 'createUser not implemented' });
+}));
+
+// PUT update user
+router.put('/:id', usersController.updateUser || ((req, res) => {
+    res.status(501).json({ error: 'updateUser not implemented' });
+}));
+
+// DELETE user
+router.delete('/:id', usersController.deleteUser || ((req, res) => {
+    res.status(501).json({ error: 'deleteUser not implemented' });
+}));
 
 module.exports = router;

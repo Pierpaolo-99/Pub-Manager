@@ -37,6 +37,9 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// IMPORTA IL CONTROLLER USERS - AGGIUNGI QUESTA LINEA
+const usersController = require('./controllers/users_controller');
+
 // Routes
 const usersRoutes = require('./routes/users');
 const categoriesRoutes = require('./routes/categories');
@@ -56,6 +59,7 @@ const reportsRoutes = require('./routes/reports');
 const settingsRoutes = require('./routes/settings');
 const stockMovementsRoutes = require('./routes/stock_movements');
 const tablesRoutes = require('./routes/tables');
+const analyticsRoutes = require('./routes/analytics');
 
 app.use('/api/users', usersRoutes);
 app.use('/api/categories', categoriesRoutes);
@@ -75,12 +79,131 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/stock-movements', stockMovementsRoutes);
 app.use('/api/tables', tablesRoutes);
+app.use('/api/analytics', analyticsRoutes);
+
+// ROUTE DI AUTENTICAZIONE CON GESTIONE ERRORI MIGLIORATA
+
+// Login route (usa Passport)
+app.post('/api/auth/login', (req, res, next) => {
+    console.log('🔑 Login attempt for:', req.body.email);
+    
+    passport.authenticate('login', (err, user, info) => {
+        if (err) {
+            console.error('❌ Passport authentication error:', err);
+            return res.status(500).json({
+                success: false,
+                message: 'Errore del server durante l\'autenticazione'
+            });
+        }
+        
+        if (!user) {
+            console.log('❌ Authentication failed:', info);
+            return res.status(401).json({
+                success: false,
+                message: info?.message || 'Credenziali non valide'
+            });
+        }
+        
+        req.logIn(user, (loginErr) => {
+            if (loginErr) {
+                console.error('❌ Login error:', loginErr);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Errore durante il login'
+                });
+            }
+            
+            console.log('✅ Login successful for user:', user.username);
+            
+            res.json({
+                success: true,
+                message: 'Login effettuato con successo',
+                user: user
+            });
+        });
+    })(req, res, next);
+});
+
+// Register route (usa Passport)
+app.post('/api/auth/register', (req, res, next) => {
+    console.log('📝 Registration attempt for:', req.body.email);
+    
+    passport.authenticate('register', (err, user, info) => {
+        if (err) {
+            console.error('❌ Passport registration error:', err);
+            return res.status(500).json({
+                success: false,
+                message: 'Errore del server durante la registrazione'
+            });
+        }
+        
+        if (!user) {
+            console.log('❌ Registration failed:', info);
+            return res.status(400).json({
+                success: false,
+                message: info?.message || 'Registrazione fallita'
+            });
+        }
+        
+        req.logIn(user, (loginErr) => {
+            if (loginErr) {
+                console.error('❌ Auto-login after registration failed:', loginErr);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Registrazione completata ma errore durante il login automatico'
+                });
+            }
+            
+            console.log('✅ Registration and auto-login successful for user:', user.username);
+            
+            res.json({
+                success: true,
+                message: 'Registrazione effettuata con successo',
+                user: user
+            });
+        });
+    })(req, res, next);
+});
+
+// Logout route
+app.post('/api/auth/logout', (req, res) => {
+    console.log('👋 Logout request for user:', req.user?.username || 'unknown');
+    
+    req.session.destroy((err) => {
+        if (err) {
+            console.error('❌ Error destroying session:', err);
+            return res.status(500).json({
+                success: false,
+                message: 'Errore durante il logout'
+            });
+        }
+        
+        console.log('✅ Logout successful');
+        res.json({
+            success: true,
+            message: 'Logout effettuato con successo'
+        });
+    });
+});
+
+// Check authentication route (usa il controller users)
+app.get('/api/users/me', usersController.getCurrentUser);
 
 // Test route
 app.get('/', (req, res) => {
     res.json({ message: 'Pub Manager API is running!' });
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('🚨 Unhandled error:', err);
+    res.status(500).json({
+        success: false,
+        message: 'Errore interno del server'
+    });
+});
+
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📡 CORS enabled for: http://localhost:5173`);
 });

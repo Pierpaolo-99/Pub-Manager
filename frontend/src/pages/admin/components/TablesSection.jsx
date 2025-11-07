@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import './TablesSection.css'
 
 export default function TablesSection() {
   const [tables, setTables] = useState([]);

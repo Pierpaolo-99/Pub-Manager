@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import './UsersSection.css'
 
 export default function UsersSection() {
   const [users, setUsers] = useState([]);
@@ -95,7 +96,7 @@ export default function UsersSection() {
       });
 
       if (response.ok) {
-        setUsers(users.filter(user => user.id !== id));
+        setUsers(users.filter(user => user.id !== id)); // CORRETTO: aggiungi parentesi
         alert('Utente eliminato con successo');
       } else {
         const errorData = await response.json();
@@ -499,60 +500,61 @@ function UserModal({ user, onClose, onSave }) {
     e.preventDefault();
     
     if (!validateForm()) {
-      return;
+        return;
     }
 
     setSaving(true);
 
     try {
-      const url = user 
-        ? `http://localhost:3000/api/users/${user.id}`
-        : 'http://localhost:3000/api/users/register';
-      
-      const method = user ? 'PUT' : 'POST';
+        // CORRETTO: per nuovi utenti usa il controller users direttamente
+        const url = user 
+            ? `http://localhost:3000/api/users/${user.id}`
+            : 'http://localhost:3000/api/users'; // NON /register ma la route users normale
 
-      // Prepara i dati da inviare
-      const dataToSend = { ...formData };
-      
-      // Per gli aggiornamenti, rimuovi password se vuota
-      if (user && !formData.password.trim()) {
-        delete dataToSend.password;
-      }
+        const method = user ? 'PUT' : 'POST';
 
-      // Rimuovi campi vuoti opzionali
-      if (!dataToSend.first_name?.trim()) dataToSend.first_name = null;
-      if (!dataToSend.last_name?.trim()) dataToSend.last_name = null;
-      if (!dataToSend.phone?.trim()) dataToSend.phone = null;
-
-      console.log('💾 Saving user:', { ...dataToSend, password: '[HIDDEN]' });
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(dataToSend)
-      });
-
-      if (response.ok) {
-        const responseData = await response.json();
-        // Il backend restituisce l'oggetto user direttamente o dentro .user
-        const userData = responseData.user || responseData;
+        // Prepara i dati da inviare
+        const dataToSend = { ...formData };
         
-        console.log('✅ User saved:', userData);
-        onSave(userData);
-        alert(user ? 'Utente aggiornato!' : 'Utente creato!');
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Error saving user:', errorData);
-        alert(errorData.message || 'Errore nel salvare l\'utente');
-      }
+        // Per gli aggiornamenti, rimuovi password se vuota
+        if (user && !formData.password.trim()) {
+            delete dataToSend.password;
+        }
+
+        // Rimuovi campi vuoti opzionali
+        if (!dataToSend.first_name?.trim()) dataToSend.first_name = null;
+        if (!dataToSend.last_name?.trim()) dataToSend.last_name = null;
+        if (!dataToSend.phone?.trim()) dataToSend.phone = null;
+
+        console.log('💾 Saving user:', { ...dataToSend, password: '[HIDDEN]' });
+
+        const response = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify(dataToSend)
+        });
+
+        if (response.ok) {
+            const responseData = await response.json();
+            // Il backend restituisce l'oggetto user direttamente o dentro .user
+            const userData = responseData.user || responseData;
+            
+            console.log('✅ User saved:', userData);
+            onSave(userData);
+            alert(user ? 'Utente aggiornato!' : 'Utente creato!');
+        } else {
+            const errorData = await response.json();
+            console.error('❌ Error saving user:', errorData);
+            alert(errorData.message || errorData.error || 'Errore nel salvare l\'utente');
+        }
     } catch (error) {
-      console.error('🚨 Network error saving user:', error);
-      alert('Errore di rete');
+        console.error('🚨 Network error saving user:', error);
+        alert('Errore di rete');
     } finally {
-      setSaving(false);
+        setSaving(false);
     }
   };
 

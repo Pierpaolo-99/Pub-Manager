@@ -50,18 +50,43 @@ export default function OverviewSection({ onNavigateToSection }) {
         fetch('http://localhost:3000/api/analytics/overview', { credentials: 'include' })
       ]);
 
-      // Processa dati con fallback
+      // Processa dati con fallback robusti
       const users = await processResponse(usersRes, []);
       const products = await processResponse(productsRes, []);
       const orders = await processResponse(ordersRes, []);
-      const stock = await processResponse(stockRes, []);
-      const analytics = await processResponse(analyticsRes, {});
+      const stockData = await processResponse(stockRes, { stock: [], summary: {} });
+      const analytics = await processResponse(analyticsRes, {
+        orders: { total: 0, today: 0, pending: 0, completed: 0, todayRevenue: 0, weeklyRevenue: 0 },
+        stock: { total: 0, lowStock: 0, outOfStock: 0, totalValue: 0 },
+        products: { total: 0, available: 0 },
+        users: { total: 0, active: 0 }
+      });
 
-      // Calcola statistiche avanzate
-      const calculatedStats = calculateStats(users, products, orders, stock, analytics);
+      // Assicurati che stock sia sempre un array
+      const stock = Array.isArray(stockData) ? stockData : (stockData.stock || []);
+
+      // Usa i dati analytics se disponibili, altrimenti calcola
+      let calculatedStats;
+      if (analytics.orders && analytics.orders.total !== undefined) {
+        calculatedStats = {
+          totalUsers: analytics.users.total,
+          totalProducts: analytics.products.total,
+          totalOrders: analytics.orders.total,
+          lowStock: analytics.stock.lowStock,
+          todayRevenue: analytics.orders.todayRevenue,
+          weeklyRevenue: analytics.orders.weeklyRevenue,
+          activeUsers: analytics.users.active,
+          pendingOrders: analytics.orders.pending,
+          completedOrders: analytics.orders.completed
+        };
+      } else {
+        // Fallback al calcolo manuale
+        calculatedStats = calculateStats(users, products, orders, stock, analytics);
+      }
+      
       setStats(calculatedStats);
 
-      // Processa ordini recenti con più dettagli
+      // Processa ordini recenti con controlli
       const processedOrders = processRecentOrders(orders);
       setRecentOrders(processedOrders);
 
@@ -80,51 +105,98 @@ export default function OverviewSection({ onNavigateToSection }) {
     } catch (error) {
       console.error('Error loading dashboard data:', error);
       setError('Errore nel caricamento dei dati della dashboard');
+      
+      // Set fallback stats in caso di errore totale
+      setStats({
+        totalUsers: 0,
+        totalProducts: 0,
+        totalOrders: 0,
+        lowStock: 0,
+        todayRevenue: 0,
+        activeUsers: 0,
+        weeklyRevenue: 0,
+        pendingOrders: 0,
+        completedOrders: 0
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // Funzioni helper migliorate
+  // Funzioni helper migliorate con controlli di tipo
   const processResponse = async (response, fallback) => {
     if (response.status === 'fulfilled' && response.value.ok) {
       try {
         return await response.value.json();
-      } catch {
+      } catch (error) {
+        console.warn('Error parsing JSON:', error);
         return fallback;
       }
     }
+    console.warn('Request failed:', response.reason || 'Unknown error');
     return fallback;
   };
 
-  const calculateStats = (users, products, orders, stock, analytics) => {
+  const calculateStats = (users = [], products = [], orders = [], stock = [], analytics = {}) => {
     const today = new Date();
     const weekStart = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
     
-    const todayOrders = orders.filter(order => 
-      new Date(order.created_at).toDateString() === today.toDateString()
-    );
+    // Assicurati che gli arrays siano sempre definiti
+    const safeUsers = Array.isArray(users) ? users : [];
+    const safeProducts = Array.isArray(products) ? products : [];
+    const safeOrders = Array.isArray(orders) ? orders : [];
+    const safeStock = Array.isArray(stock) ? stock : [];
     
-    const weeklyOrders = orders.filter(order => 
-      new Date(order.created_at) >= weekStart
-    );
+    const todayOrders = safeOrders.filter(order => {
+      try {
+        return new Date(order.created_at).toDateString() === today.toDateString();
+      } catch {
+        return false;
+      }
+    });
+    
+    const weeklyOrders = safeOrders.filter(order => {
+      try {
+        return new Date(order.created_at) >= weekStart;
+      } catch {
+        return false;
+      }
+    });
 
-    const pendingOrders = orders.filter(order => 
-      ['pending', 'preparing'].includes(order.status)
+    const pendingOrders = safeOrders.filter(order => 
+      ['pending', 'in_preparazione'].includes(order?.status)
     ).length;
 
-    const completedOrders = orders.filter(order => 
-      order.status === 'completed'
+    const completedOrders = safeOrders.filter(order => 
+      order?.status === 'pagato'
     ).length;
+
+    // Calcola revenue in modo sicuro
+    const todayRevenue = todayOrders.reduce((sum, order) => {
+      const total = parseFloat(order?.total);
+      return sum + (isNaN(total) ? 0 : total);
+    }, 0);
+
+    const weeklyRevenue = weeklyOrders.reduce((sum, order) => {
+      const total = parseFloat(order?.total);
+      return sum + (isNaN(total) ? 0 : total);
+    }, 0);
+
+    // Calcola low stock in modo sicuro
+    const lowStock = safeStock.filter(item => {
+      const quantity = parseFloat(item?.quantity);
+      const minQty = parseFloat(item?.min_threshold || item?.min_quantity) || 10;
+      return !isNaN(quantity) && (quantity < minQty || quantity < 10);
+    }).length;
 
     return {
-      totalUsers: users.length,
-      totalProducts: products.length,
-      totalOrders: orders.length,
-      lowStock: stock.filter(item => item.quantity < item.min_quantity || item.quantity < 10).length,
-      todayRevenue: todayOrders.reduce((sum, order) => sum + parseFloat(order.total || 0), 0),
-      weeklyRevenue: weeklyOrders.reduce((sum, order) => sum + parseFloat(order.total || 0), 0),
-      activeUsers: users.filter(user => user.active && isRecentlyActive(user.last_login)).length,
+      totalUsers: safeUsers.length,
+      totalProducts: safeProducts.length,
+      totalOrders: safeOrders.length,
+      lowStock,
+      todayRevenue,
+      weeklyRevenue,
+      activeUsers: safeUsers.filter(user => user?.active).length,
       pendingOrders,
       completedOrders
     };
@@ -133,12 +205,24 @@ export default function OverviewSection({ onNavigateToSection }) {
   const isRecentlyActive = (lastLogin) => {
     if (!lastLogin) return false;
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    return new Date(lastLogin) > sevenDaysAgo;
+    try {
+      return new Date(lastLogin) > sevenDaysAgo;
+    } catch {
+      return false;
+    }
   };
 
-  const processRecentOrders = (orders) => {
+  const processRecentOrders = (orders = []) => {
+    if (!Array.isArray(orders)) return [];
+    
     return orders
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .sort((a, b) => {
+        try {
+          return new Date(b.created_at) - new Date(a.created_at);
+        } catch {
+          return 0;
+        }
+      })
       .slice(0, 5)
       .map(order => ({
         ...order,
@@ -147,21 +231,27 @@ export default function OverviewSection({ onNavigateToSection }) {
       }));
   };
 
-  const calculateTopProducts = async (products, orders) => {
+  const calculateTopProducts = async (products = [], orders = []) => {
+    if (!Array.isArray(products) || !Array.isArray(orders)) return [];
+    
     // Raggruppa ordini per prodotto
     const productSales = {};
     
     orders.forEach(order => {
-      if (order.items) {
+      if (Array.isArray(order?.items)) {
         order.items.forEach(item => {
-          if (!productSales[item.product_id]) {
-            productSales[item.product_id] = {
-              quantity: 0,
-              revenue: 0
-            };
+          const productId = item?.product_id;
+          if (!productId) return;
+          
+          if (!productSales[productId]) {
+            productSales[productId] = { quantity: 0, revenue: 0 };
           }
-          productSales[item.product_id].quantity += item.quantity;
-          productSales[item.product_id].revenue += item.quantity * item.price;
+          
+          const quantity = parseInt(item?.quantity) || 0;
+          const price = parseFloat(item?.price) || 0;
+          
+          productSales[productId].quantity += quantity;
+          productSales[productId].revenue += quantity * price;
         });
       }
     });
@@ -169,25 +259,34 @@ export default function OverviewSection({ onNavigateToSection }) {
     return products
       .map(product => ({
         ...product,
-        sold: productSales[product.id]?.quantity || 0,
-        revenue: productSales[product.id]?.revenue || 0
+        sold: productSales[product?.id]?.quantity || 0,
+        revenue: productSales[product?.id]?.revenue || 0
       }))
       .filter(product => product.sold > 0)
       .sort((a, b) => b.sold - a.sold)
       .slice(0, 5);
   };
 
-  const generateRevenueChart = (orders) => {
+  const generateRevenueChart = (orders = []) => {
+    if (!Array.isArray(orders)) return [];
+    
     const last7Days = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       
-      const dayOrders = orders.filter(order => 
-        new Date(order.created_at).toDateString() === date.toDateString()
-      );
+      const dayOrders = orders.filter(order => {
+        try {
+          return new Date(order.created_at).toDateString() === date.toDateString();
+        } catch {
+          return false;
+        }
+      });
       
-      const revenue = dayOrders.reduce((sum, order) => sum + parseFloat(order.total || 0), 0);
+      const revenue = dayOrders.reduce((sum, order) => {
+        const total = parseFloat(order?.total);
+        return sum + (isNaN(total) ? 0 : total);
+      }, 0);
       
       last7Days.push({
         date: date.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric' }),
@@ -198,40 +297,50 @@ export default function OverviewSection({ onNavigateToSection }) {
     return last7Days;
   };
 
-  const generateStockAlerts = (stock, products) => {
+  const generateStockAlerts = (stock = [], products = []) => {
+    if (!Array.isArray(stock) || !Array.isArray(products)) return [];
+    
     return stock
-      .filter(item => item.quantity < (item.min_quantity || 10))
+      .filter(item => {
+        const quantity = parseFloat(item?.quantity);
+        const minQty = parseFloat(item?.min_quantity || item?.min_threshold) || 10;
+        return !isNaN(quantity) && quantity < minQty;
+      })
       .map(item => {
-        const product = products.find(p => p.id === item.product_id);
+        const product = products.find(p => p?.id === item?.product_id);
         return {
           ...item,
           productName: product?.name || 'Prodotto sconosciuto',
           severity: item.quantity === 0 ? 'critical' : item.quantity < 5 ? 'high' : 'medium'
         };
       })
-      .sort((a, b) => a.quantity - b.quantity);
+      .sort((a, b) => (a?.quantity || 0) - (b?.quantity || 0));
   };
 
   const getTimeAgo = (date) => {
-    const now = new Date();
-    const orderDate = new Date(date);
-    const diffMs = now - orderDate;
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 1) return 'Ora';
-    if (diffMins < 60) return `${diffMins}m fa`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h fa`;
-    return `${Math.floor(diffMins / 1440)}g fa`;
+    try {
+      const now = new Date();
+      const orderDate = new Date(date);
+      const diffMs = now - orderDate;
+      const diffMins = Math.floor(diffMs / 60000);
+      
+      if (diffMins < 1) return 'Ora';
+      if (diffMins < 60) return `${diffMins}m fa`;
+      if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h fa`;
+      return `${Math.floor(diffMins / 1440)}g fa`;
+    } catch {
+      return '--';
+    }
   };
 
   const getStatusColor = (status) => {
     const colors = {
       'pending': 'orange',
-      'preparing': 'blue', 
-      'ready': 'green',
-      'served': 'purple',
-      'completed': 'green',
-      'cancelled': 'red'
+      'in_preparazione': 'blue', 
+      'pronto': 'green',
+      'servito': 'purple',
+      'pagato': 'green',
+      'annullato': 'red'
     };
     return colors[status] || 'gray';
   };
@@ -239,11 +348,11 @@ export default function OverviewSection({ onNavigateToSection }) {
   const getOrderStatusLabel = (status) => {
     const labels = {
       'pending': 'In Attesa',
-      'preparing': 'In Preparazione',
-      'ready': 'Pronto',
-      'served': 'Servito',
-      'completed': 'Completato',
-      'cancelled': 'Annullato'
+      'in_preparazione': 'In Preparazione',
+      'pronto': 'Pronto',
+      'servito': 'Servito',
+      'pagato': 'Pagato',
+      'annullato': 'Annullato'
     };
     return labels[status] || status;
   };
@@ -298,6 +407,7 @@ export default function OverviewSection({ onNavigateToSection }) {
             </div>
           </div>
         </div>
+        
         <div className="header-actions">
           <button 
             className="btn secondary refresh-btn"
@@ -542,7 +652,7 @@ function StatCard({ title, value, subtitle, icon, color, trend }) {
 
 function QuickActionCard({ icon, title, description, onClick, color, alert }) {
   return (
-    <button 
+    <div 
       className={`quick-action-card ${color} ${alert ? 'alert' : ''}`}
       onClick={onClick}
     >
@@ -552,7 +662,7 @@ function QuickActionCard({ icon, title, description, onClick, color, alert }) {
         <p>{description}</p>
       </div>
       {alert && <div className="alert-badge">!</div>}
-    </button>
+    </div>
   );
 }
 
@@ -594,7 +704,7 @@ function SystemAlerts({ stockAlerts, stats, onNavigateToSection }) {
   const alerts = [];
 
   // Stock alerts
-  if (stockAlerts.length > 0) {
+  if (Array.isArray(stockAlerts) && stockAlerts.length > 0) {
     alerts.push({
       type: 'stock',
       severity: 'high',
