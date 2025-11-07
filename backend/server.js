@@ -53,6 +53,7 @@ const purchaseOrdersRoutes = require('./routes/purchase_orders');
 const suppliersRoutes = require('./routes/suppliers');
 const recipesRoutes = require('./routes/recipes');
 const reportsRoutes = require('./routes/reports');
+const settingsRoutes = require('./routes/settings');
 
 app.use('/api/users', usersRoutes);
 app.use('/api/categories', categoriesRoutes);
@@ -69,6 +70,7 @@ app.use('/api/purchase-orders', purchaseOrdersRoutes);
 app.use('/api/suppliers', suppliersRoutes);
 app.use('/api/recipes', recipesRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Test route
 app.get('/', (req, res) => {
