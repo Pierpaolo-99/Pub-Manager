@@ -53,8 +53,12 @@ function getAllTables(req, res) {
     
     connection.query(sql, params, (err, results) => {
         if (err) {
-            console.error('Error fetching tables:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento tavoli' });
+            console.error('❌ Error fetching tables:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento tavoli',
+                details: err.message 
+            });
         }
         
         // Converti i dati per il frontend
@@ -68,9 +72,17 @@ function getAllTables(req, res) {
             currentOrder: null // Da implementare con join agli ordini
         }));
         
+        console.log(`✅ Found ${tables.length} tables`);
         res.json({
+            success: true,  // ← AGGIUNGI QUESTO
             tables,
-            summary: calculateTablesSummary(tables)
+            summary: calculateTablesSummary(tables),
+            filters: {
+                location: location || null,
+                status: status || null,
+                capacity: capacity || null,
+                active: active !== undefined ? active : null
+            }
         });
     });
 }
@@ -84,12 +96,16 @@ function getTableById(req, res) {
             t.*,
             o.id as order_id,
             o.total as order_total,
+            o.status as order_status,
+            o.created_at as order_created,
             COUNT(oi.id) as order_items
         FROM tables t
-        LEFT JOIN orders o ON t.id = o.table_id AND o.status != 'completed' AND o.status != 'cancelled'
+        LEFT JOIN orders o ON t.id = o.table_id 
+            AND o.status IN ('pending', 'in_preparazione', 'pronto', 'servito')
         LEFT JOIN order_items oi ON o.id = oi.order_id
         WHERE t.id = ?
-        GROUP BY t.id, o.id
+        GROUP BY t.id, t.number, t.location, t.capacity, t.status, t.active, t.notes, t.created_at, t.updated_at,
+                 o.id, o.total, o.status, o.created_at
     `;
     
     connection.query(sql, [id], (err, results) => {
@@ -99,7 +115,10 @@ function getTableById(req, res) {
         }
         
         if (results.length === 0) {
-            return res.status(404).json({ error: 'Tavolo non trovato' });
+            return res.status(404).json({ 
+                success: false,
+                error: 'Tavolo non trovato' 
+            });
         }
         
         const table = {
@@ -112,7 +131,11 @@ function getTableById(req, res) {
             } : null
         };
         
-        res.json(table);
+        console.log(`✅ Table ${id} found`);
+        res.json({
+            success: true,  // ← AGGIUNGI QUESTO
+            table: table
+        });
     });
 }
 
@@ -354,8 +377,12 @@ function getTablesStats(req, res) {
     
     connection.query(sql, (err, results) => {
         if (err) {
-            console.error('Error fetching tables stats:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento statistiche' });
+            console.error('❌ Error fetching tables stats:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento statistiche',
+                details: err.message 
+            });
         }
         
         const stats = {
@@ -363,7 +390,11 @@ function getTablesStats(req, res) {
             avg_capacity: parseFloat(results[0].avg_capacity) || 0
         };
         
-        res.json(stats);
+        console.log('✅ Tables stats calculated:', stats);
+        res.json({
+            success: true,  // ← AGGIUNGI QUESTO
+            stats: stats
+        });
     });
 }
 
