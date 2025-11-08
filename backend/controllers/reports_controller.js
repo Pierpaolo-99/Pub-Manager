@@ -243,7 +243,7 @@ function getTopProducts(req, res) {
     });
 }
 
-// GET report inventario CORRETTO (usa tabella stock)
+// GET report inventario CORRETTO
 function getInventoryReport(req, res) {
     const { status = 'all', supplier_filter, expiring_days = 30 } = req.query;
     
@@ -258,7 +258,6 @@ function getInventoryReport(req, res) {
             s.max_threshold,
             s.cost_per_unit,
             s.supplier,
-            s.batch_number,
             s.expiry_date,
             s.notes as stock_notes,
             s.last_restock_date,
@@ -357,7 +356,7 @@ function getInventoryReport(req, res) {
             cost_per_unit: parseFloat(item.cost_per_unit) || 0,
             total_value: parseFloat(item.total_value) || 0,
             supplier: item.supplier || 'Non specificato',
-            batch_number: item.batch_number,
+            // ❌ RIMOSSO: batch_number (campo inesistente)
             expiry_date: item.expiry_date,
             days_to_expiry: item.days_to_expiry,
             last_restock_date: item.last_restock_date,
@@ -380,12 +379,12 @@ function getInventoryReport(req, res) {
     });
 }
 
-// GET analisi costi SEMPLIFICATA (senza tabelle purchase_orders)
+// GET analisi costi MIGLIORATA (con purchase_orders)
 function getCostsAnalysis(req, res) {
     const { period = 'month' } = req.query;
     const { startDate, endDate } = calculateDateRange(period);
     
-    console.log('💰 Getting costs analysis:', { period });
+    console.log('💰 Getting enhanced costs analysis:', { period });
     
     // Query ricavi
     const revenueQuery = `
@@ -398,7 +397,18 @@ function getCostsAnalysis(req, res) {
             AND created_at BETWEEN ? AND ?
     `;
     
-    // Query valore stock attuale (proxy per costi)
+    // Query costi reali da purchase_orders
+    const purchaseCostsQuery = `
+        SELECT 
+            COALESCE(SUM(po.total), 0) as total_purchase_costs,
+            COUNT(*) as purchase_orders_count,
+            COALESCE(AVG(po.total), 0) as avg_purchase_value
+        FROM purchase_orders po
+        WHERE po.status IN ('delivered', 'invoiced', 'paid')
+            AND po.actual_delivery_date BETWEEN ? AND ?
+    `;
+    
+    // Query valore stock attuale
     const stockValueQuery = `
         SELECT 
             COALESCE(SUM(quantity * cost_per_unit), 0) as total_stock_value,
@@ -427,6 +437,16 @@ function getCostsAnalysis(req, res) {
             });
         }),
         new Promise((resolve, reject) => {
+            connection.query(purchaseCostsQuery, [startDate, endDate], (err, results) => {
+                if (err) {
+                    console.warn('⚠️ Purchase costs query failed, using fallback');
+                    resolve({ total_purchase_costs: 0, purchase_orders_count: 0, avg_purchase_value: 0 });
+                } else {
+                    resolve(results[0] || {});
+                }
+            });
+        }),
+        new Promise((resolve, reject) => {
             connection.query(stockValueQuery, (err, results) => {
                 if (err) reject(err);
                 else resolve(results[0] || {});
@@ -438,11 +458,15 @@ function getCostsAnalysis(req, res) {
                 else resolve(results[0] || {});
             });
         })
-    ]).then(([revenue, stockValue, movements]) => {
+    ]).then(([revenue, purchaseCosts, stockValue, movements]) => {
         
         const revenueAmount = parseFloat(revenue.total_revenue) || 0;
+        const realCosts = parseFloat(purchaseCosts.total_purchase_costs) || 0;
         const estimatedCosts = parseFloat(movements.estimated_costs) || 0;
-        const profit = revenueAmount - estimatedCosts;
+        
+        // Usa costi reali se disponibili, altrimenti stima
+        const actualCosts = realCosts > 0 ? realCosts : estimatedCosts;
+        const profit = revenueAmount - actualCosts;
         const marginPercentage = revenueAmount > 0 ? (profit / revenueAmount) * 100 : 0;
         
         const analysis = {
@@ -457,8 +481,12 @@ function getCostsAnalysis(req, res) {
                 avg_order: parseFloat(revenue.avg_order_value) || 0
             },
             costs: {
+                actual: actualCosts,
+                purchase_orders: realCosts,
                 estimated: estimatedCosts,
+                source: realCosts > 0 ? 'purchase_orders' : 'stock_movements',
                 stock_value: parseFloat(stockValue.total_stock_value) || 0,
+                purchase_orders_count: parseInt(purchaseCosts.purchase_orders_count) || 0,
                 movements: {
                     out: parseInt(movements.out_movements) || 0,
                     in: parseInt(movements.in_movements) || 0
@@ -474,7 +502,7 @@ function getCostsAnalysis(req, res) {
             }
         };
         
-        console.log('✅ Costs analysis calculated');
+        console.log('✅ Enhanced costs analysis calculated');
         res.json({
             success: true,
             data: analysis
