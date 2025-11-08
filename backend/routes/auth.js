@@ -4,9 +4,10 @@ const passport = require('passport');
 
 // POST /api/auth/login
 router.post('/login', (req, res, next) => {
-  console.log('🔐 Login attempt for:', req.body.username);
+  console.log('🔐 Login attempt for:', req.body.email); // CORRETTO: usa email
   
-  passport.authenticate('local-login', (err, user, info) => {
+  // CORRETTO: usa 'login' invece di 'local-login'
+  passport.authenticate('login', (err, user, info) => {
     if (err) {
       console.error('❌ Login error:', err);
       return res.status(500).json({ 
@@ -21,7 +22,7 @@ router.post('/login', (req, res, next) => {
       return res.status(401).json({ 
         success: false,
         error: 'Credenziali non valide',
-        message: info?.message || 'Username o password errati'
+        message: info?.message || 'Email o password errati'
       });
     }
     
@@ -56,7 +57,8 @@ router.post('/login', (req, res, next) => {
 router.post('/register', (req, res, next) => {
   console.log('📝 Registration attempt for:', req.body.username);
   
-  passport.authenticate('local-register', (err, user, info) => {
+  // CORRETTO: usa 'register' invece di 'local-register'
+  passport.authenticate('register', (err, user, info) => {
     if (err) {
       console.error('❌ Registration error:', err);
       return res.status(500).json({ 

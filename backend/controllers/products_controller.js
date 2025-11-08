@@ -22,7 +22,9 @@ function getAllProducts(req, res) {
                 JSON_OBJECT(
                     'id', pa.allergen_id,
                     'name', a.name,
-                    'code', a.code
+                    'description', a.description,
+                    'icon', a.icon,
+                    'color', a.color
                 )
             ) as allergens_json,
             COUNT(DISTINCT pv.id) as variants_count

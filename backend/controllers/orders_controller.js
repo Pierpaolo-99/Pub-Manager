@@ -1,227 +1,234 @@
 const connection = require('../database/db');
 
-/////////////////////////
-// NUOVE FUNZIONI MIGLIORATE
-/////////////////////////
-
 // GET tutti gli ordini con informazioni tavolo
-async function getAllOrders(req, res) {
+function getAllOrders(req, res) {
     console.log('🔄 getAllOrders chiamata');
-    try {
-        const { 
-            status, 
-            table_id, 
-            customer_name, 
-            payment_method,
-            date_from,
-            date_to,
-            limit = 100,
-            offset = 0 
-        } = req.query;
+    
+    const { 
+        status, 
+        table_id, 
+        payment_method,
+        date_from,
+        date_to,
+        limit = 100,
+        offset = 0 
+    } = req.query;
 
-        let sql = `
-            SELECT 
-                o.id,
-                o.table_id,
-                o.user_id,
-                o.customer_name,
-                o.customer_phone,
-                o.customer_email,
-                o.status,
-                o.total,
-                o.subtotal,
-                o.tax_amount,
-                o.discount_amount,
-                o.promotion_id,
-                o.payment_method,
-                o.payment_status,
-                o.notes,
-                o.kitchen_notes,
-                o.estimated_ready_time,
-                o.served_at,
-                o.paid_at,
-                o.created_at,
-                o.updated_at,
-                t.number as table_number,
-                t.location as table_location,
-                t.capacity as table_capacity,
-                u.username as waiter_name,
-                p.name as promotion_name,
-                COUNT(oi.id) as items_count
-            FROM orders o
-            LEFT JOIN tables t ON o.table_id = t.id
-            LEFT JOIN users u ON o.user_id = u.id
-            LEFT JOIN promotions p ON o.promotion_id = p.id
-            LEFT JOIN order_items oi ON o.id = oi.order_id
-            WHERE 1=1
-        `;
-        
-        const params = [];
-        
-        // Filtri
-        if (status) {
-            sql += ` AND o.status = ?`;
-            params.push(status);
-        }
-        
-        if (table_id) {
-            sql += ` AND o.table_id = ?`;
-            params.push(table_id);
-        }
-        
-        if (customer_name) {
-            sql += ` AND o.customer_name LIKE ?`;
-            params.push(`%${customer_name}%`);
-        }
-        
-        if (payment_method) {
-            sql += ` AND o.payment_method = ?`;
-            params.push(payment_method);
-        }
-        
-        if (date_from) {
-            sql += ` AND DATE(o.created_at) >= ?`;
-            params.push(date_from);
-        }
-        
-        if (date_to) {
-            sql += ` AND DATE(o.created_at) <= ?`;
-            params.push(date_to);
-        }
+    let sql = `
+        SELECT 
+            o.id,
+            o.table_id,
+            o.user_id,
+            o.total,
+            o.status,
+            o.payment_method,
+            o.notes,
+            o.created_at,
+            o.updated_at,
+            t.number as table_number,
+            t.location as table_location,
+            t.capacity as table_capacity,
+            u.username as waiter_name,
+            COUNT(oi.id) as items_count
+        FROM orders o
+        LEFT JOIN tables t ON o.table_id = t.id
+        LEFT JOIN users u ON o.user_id = u.id
+        LEFT JOIN order_items oi ON o.id = oi.order_id
+        WHERE 1=1
+    `;
+    
+    const params = [];
+    
+    // Filtri
+    if (status) {
+        sql += ` AND o.status = ?`;
+        params.push(status);
+    }
+    
+    if (table_id) {
+        sql += ` AND o.table_id = ?`;
+        params.push(table_id);
+    }
+    
+    if (payment_method) {
+        sql += ` AND o.payment_method = ?`;
+        params.push(payment_method);
+    }
+    
+    if (date_from) {
+        sql += ` AND DATE(o.created_at) >= ?`;
+        params.push(date_from);
+    }
+    
+    if (date_to) {
+        sql += ` AND DATE(o.created_at) <= ?`;
+        params.push(date_to);
+    }
 
-        sql += ` 
-            GROUP BY o.id 
-            ORDER BY o.created_at DESC 
-            LIMIT ? OFFSET ?
-        `;
-        
-        params.push(parseInt(limit), parseInt(offset));
+    sql += ` 
+        GROUP BY o.id, o.table_id, o.user_id, o.total, o.status, o.payment_method, o.notes, o.created_at, o.updated_at,
+                 t.number, t.location, t.capacity, u.username
+        ORDER BY o.created_at DESC 
+        LIMIT ? OFFSET ?
+    `;
+    
+    params.push(parseInt(limit), parseInt(offset));
 
-        const orders = await new Promise((resolve, reject) => {
-            connection.query(sql, params, (err, results) => {
-                if (err) reject(err);
-                else resolve(results);
+    console.log('🔍 Executing orders query with params:', params);
+    
+    connection.query(sql, params, async (err, orders) => {
+        if (err) {
+            console.error('❌ Error fetching orders:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento degli ordini',
+                details: err.message 
             });
-        });
+        }
 
         if (orders.length === 0) {
-            return res.json([]);
+            return res.json({
+                success: true,
+                orders: [],
+                pagination: {
+                    limit: parseInt(limit),
+                    offset: parseInt(offset),
+                    total: 0
+                }
+            });
         }
 
         // Carica gli items per ogni ordine
-        const ordersWithItems = await Promise.all(
-            orders.map(async (order) => {
-                const itemsQuery = `
-                    SELECT 
-                        oi.id,
-                        oi.quantity,
-                        oi.price_at_sale as price,
-                        oi.subtotal,
-                        oi.notes,
-                        oi.status as item_status,
-                        pv.name as variant_name,
-                        p.name as product_name,
-                        p.image as product_image,
-                        c.name as category_name
-                    FROM order_items oi
-                    INNER JOIN product_variants pv ON oi.product_variant_id = pv.id
-                    INNER JOIN products p ON pv.product_id = p.id
-                    LEFT JOIN categories c ON p.category_id = c.id
-                    WHERE oi.order_id = ?
-                    ORDER BY oi.id
-                `;
+        try {
+            const ordersWithItems = await Promise.all(
+                orders.map(async (order) => {
+                    const itemsQuery = `
+                        SELECT 
+                            oi.id,
+                            oi.quantity,
+                            oi.price_at_sale as price,
+                            oi.subtotal,
+                            oi.notes,
+                            oi.status as item_status,
+                            pv.name as variant_name,
+                            pv.sku as variant_sku,
+                            p.name as product_name,
+                            p.image_url as product_image,
+                            c.name as category_name
+                        FROM order_items oi
+                        INNER JOIN product_variants pv ON oi.product_variant_id = pv.id
+                        INNER JOIN products p ON pv.product_id = p.id
+                        LEFT JOIN categories c ON p.category_id = c.id
+                        WHERE oi.order_id = ?
+                        ORDER BY oi.id
+                    `;
 
-                const items = await new Promise((resolve, reject) => {
-                    connection.query(itemsQuery, [order.id], (err2, results) => {
-                        if (err2) {
-                            console.error('Error loading items for order', order.id, err2);
-                            resolve([]);
-                        } else {
-                            resolve(results.map(item => ({
-                                id: item.id,
-                                name: `${item.product_name}${item.variant_name !== item.product_name ? ` - ${item.variant_name}` : ''}`,
-                                quantity: item.quantity,
-                                price: item.price,
-                                subtotal: item.subtotal,
-                                notes: item.notes,
-                                status: item.item_status,
-                                image: item.product_image,
-                                category: item.category_name
-                            })));
-                        }
+                    const items = await new Promise((resolve, reject) => {
+                        connection.query(itemsQuery, [order.id], (err2, results) => {
+                            if (err2) {
+                                console.error('Error loading items for order', order.id, err2);
+                                resolve([]);
+                            } else {
+                                resolve(results.map(item => ({
+                                    id: item.id,
+                                    name: `${item.product_name}${item.variant_name !== item.product_name ? ` - ${item.variant_name}` : ''}`,
+                                    quantity: item.quantity,
+                                    price: parseFloat(item.price),
+                                    subtotal: parseFloat(item.subtotal),
+                                    notes: item.notes,
+                                    status: item.item_status,
+                                    sku: item.variant_sku,
+                                    product_name: item.product_name,
+                                    variant_name: item.variant_name,
+                                    image: item.product_image,
+                                    category: item.category_name
+                                })));
+                            }
+                        });
                     });
-                });
 
-                // Calcola il totale se non presente
-                let calculatedTotal = order.total;
-                if (!calculatedTotal && items.length > 0) {
-                    calculatedTotal = items.reduce((sum, item) => {
-                        return sum + parseFloat(item.subtotal || 0);
-                    }, 0).toFixed(2);
+                    // Calcola il totale verificato
+                    const calculatedTotal = items.reduce((sum, item) => {
+                        return sum + (parseFloat(item.subtotal) || 0);
+                    }, 0);
+
+                    // Determina se l'ordine è urgente
+                    const now = new Date();
+                    const orderDate = new Date(order.created_at);
+                    const diffMinutes = Math.floor((now - orderDate) / (1000 * 60));
+                    
+                    let isUrgent = false;
+                    if (order.status === 'pending' && diffMinutes > 15) isUrgent = true;
+                    if (order.status === 'in_preparazione' && diffMinutes > 30) isUrgent = true;
+                    if (order.status === 'pronto' && diffMinutes > 10) isUrgent = true;
+
+                    return {
+                        ...order,
+                        total: parseFloat(order.total),
+                        calculated_total: parseFloat(calculatedTotal.toFixed(2)),
+                        items: items,
+                        isUrgent,
+                        waitingTime: diffMinutes
+                    };
+                })
+            );
+
+            console.log(`✅ Caricati ${ordersWithItems.length} ordini con items`);
+            res.json({
+                success: true,
+                orders: ordersWithItems,
+                pagination: {
+                    limit: parseInt(limit),
+                    offset: parseInt(offset),
+                    total: ordersWithItems.length
                 }
+            });
 
-                // Determina se l'ordine è urgente
-                const now = new Date();
-                const orderDate = new Date(order.created_at);
-                const diffMinutes = Math.floor((now - orderDate) / (1000 * 60));
-                
-                let isUrgent = false;
-                if (order.status === 'pending' && diffMinutes > 15) isUrgent = true;
-                if (order.status === 'in_preparazione' && diffMinutes > 30) isUrgent = true;
-                if (order.status === 'pronto' && diffMinutes > 10) isUrgent = true;
-
-                return {
-                    ...order,
-                    total: calculatedTotal,
-                    items: items,
-                    isUrgent,
-                    waitingTime: diffMinutes
-                };
-            })
-        );
-
-        console.log(`✅ Caricati ${ordersWithItems.length} ordini`);
-        res.json(ordersWithItems);
-
-    } catch (error) {
-        console.log('❌ Errore in getAllOrders:', error);
-        res.status(500).json({ 
-            error: 'Errore nel caricamento degli ordini',
-            message: error.message 
-        });
-    }
+        } catch (itemsError) {
+            console.error('❌ Error loading order items:', itemsError);
+            res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento dettagli ordini',
+                details: itemsError.message 
+            });
+        }
+    });
 }
 
 // GET singolo ordine con dettagli completi
-async function getOrderById(req, res) {
-    try {
-        const { id } = req.params;
-        
-        const sql = `
-            SELECT 
-                o.*,
-                t.number as table_number,
-                t.location as table_location,
-                t.capacity as table_capacity,
-                u.username as waiter_name,
-                p.name as promotion_name,
-                p.discount_value as promotion_discount
-            FROM orders o
-            LEFT JOIN tables t ON o.table_id = t.id
-            LEFT JOIN users u ON o.user_id = u.id
-            LEFT JOIN promotions p ON o.promotion_id = p.id
-            WHERE o.id = ?
-        `;
-        
-        const orders = await new Promise((resolve, reject) => {
-            connection.query(sql, [id], (err, results) => {
-                if (err) reject(err);
-                else resolve(results);
+function getOrderById(req, res) {
+    const { id } = req.params;
+    
+    console.log('🔍 Getting order by ID:', id);
+    
+    const sql = `
+        SELECT 
+            o.*,
+            t.number as table_number,
+            t.location as table_location,
+            t.capacity as table_capacity,
+            u.username as waiter_name
+        FROM orders o
+        LEFT JOIN tables t ON o.table_id = t.id
+        LEFT JOIN users u ON o.user_id = u.id
+        WHERE o.id = ?
+    `;
+    
+    connection.query(sql, [id], (err, orders) => {
+        if (err) {
+            console.error('❌ Error fetching order:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento ordine',
+                details: err.message 
             });
-        });
+        }
 
         if (orders.length === 0) {
-            return res.status(404).json({ message: 'Ordine non trovato' });
+            return res.status(404).json({ 
+                success: false,
+                error: 'Ordine non trovato' 
+            });
         }
 
         const order = orders[0];
@@ -231,10 +238,10 @@ async function getOrderById(req, res) {
             SELECT 
                 oi.*,
                 pv.name as variant_name,
-                pv.unit as variant_unit,
+                pv.sku as variant_sku,
                 p.name as product_name,
                 p.description as product_description,
-                p.image as product_image,
+                p.image_url as product_image,
                 c.name as category_name,
                 c.icon as category_icon
             FROM order_items oi
@@ -245,420 +252,507 @@ async function getOrderById(req, res) {
             ORDER BY oi.id
         `;
         
-        const items = await new Promise((resolve, reject) => {
-            connection.query(itemsQuery, [id], (err2, results) => {
-                if (err2) reject(err2);
-                else resolve(results.map(item => ({
-                    id: item.id,
-                    name: `${item.product_name}${item.variant_name !== item.product_name ? ` - ${item.variant_name}` : ''}`,
-                    quantity: item.quantity,
-                    price: item.price_at_sale,
-                    subtotal: item.subtotal,
-                    notes: item.notes,
-                    status: item.status,
-                    product: {
-                        name: item.product_name,
-                        description: item.product_description,
-                        image: item.product_image,
-                        category: item.category_name,
-                        categoryIcon: item.category_icon
-                    },
-                    variant: {
-                        name: item.variant_name,
-                        unit: item.variant_unit
-                    }
-                })));
+        connection.query(itemsQuery, [id], (err2, items) => {
+            if (err2) {
+                console.error('❌ Error fetching order items:', err2);
+                return res.status(500).json({ 
+                    success: false,
+                    error: 'Errore nel caricamento items ordine',
+                    details: err2.message 
+                });
+            }
+
+            const processedItems = items.map(item => ({
+                id: item.id,
+                name: `${item.product_name}${item.variant_name !== item.product_name ? ` - ${item.variant_name}` : ''}`,
+                quantity: item.quantity,
+                price: parseFloat(item.price_at_sale),
+                subtotal: parseFloat(item.subtotal),
+                notes: item.notes,
+                status: item.status,
+                product: {
+                    name: item.product_name,
+                    description: item.product_description,
+                    image: item.product_image,
+                    category: item.category_name,
+                    categoryIcon: item.category_icon
+                },
+                variant: {
+                    name: item.variant_name,
+                    sku: item.variant_sku
+                }
+            }));
+
+            const result = {
+                ...order,
+                total: parseFloat(order.total),
+                items: processedItems
+            };
+
+            console.log(`✅ Order ${id} loaded with ${processedItems.length} items`);
+            res.json({
+                success: true,
+                order: result
             });
         });
-
-        const result = {
-            ...order,
-            items: items
-        };
-
-        res.json(result);
-
-    } catch (error) {
-        console.error('Error in getOrderById:', error);
-        res.status(500).json({ 
-            error: 'Errore nel caricamento dell\'ordine',
-            message: error.message 
-        });
-    }
+    });
 }
 
-// POST nuovo ordine migliorato
-async function createOrder(req, res) {
-    try {
-        const {
-            table_id,
-            customer_name,
-            customer_phone,
-            customer_email,
-            items = [],
-            notes,
-            kitchen_notes,
-            payment_method = 'contanti',
-            promotion_id,
-            discount_amount = 0
-        } = req.body;
+// POST nuovo ordine corretto
+function createOrder(req, res) {
+    const {
+        table_id,
+        items = [],
+        notes,
+        payment_method = 'contanti'
+    } = req.body;
 
-        if (!items || items.length === 0) {
+    console.log('➕ Creating new order:', { table_id, items: items.length, payment_method });
+
+    if (!items || items.length === 0) {
+        return res.status(400).json({ 
+            success: false,
+            error: 'L\'ordine deve contenere almeno un prodotto' 
+        });
+    }
+
+    // Validazione items
+    for (const item of items) {
+        if (!item.product_variant_id || !item.quantity || !item.price) {
             return res.status(400).json({ 
-                error: 'L\'ordine deve contenere almeno un prodotto' 
+                success: false,
+                error: 'Ogni item deve avere product_variant_id, quantity e price' 
+            });
+        }
+    }
+
+    // Inizia transazione
+    connection.beginTransaction((err) => {
+        if (err) {
+            console.error('❌ Transaction error:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nell\'avvio transazione',
+                details: err.message 
             });
         }
 
-        // Inizia transazione
-        await new Promise((resolve, reject) => {
-            connection.beginTransaction((err) => {
-                if (err) reject(err);
-                else resolve();
-            });
-        });
+        // Calcola totale
+        let total = 0;
+        for (const item of items) {
+            total += parseFloat(item.price) * parseInt(item.quantity);
+        }
 
-        try {
-            // Calcola totali
-            let subtotal = 0;
-            for (const item of items) {
-                subtotal += parseFloat(item.price) * parseInt(item.quantity);
+        // Inserisci ordine principale
+        const orderSql = `
+            INSERT INTO orders (
+                table_id, user_id, total, status, payment_method, notes, created_at, updated_at
+            ) VALUES (?, ?, ?, 'pending', ?, ?, NOW(), NOW())
+        `;
+
+        connection.query(orderSql, [
+            table_id || null,
+            req.user?.id || 1,
+            total.toFixed(2),
+            payment_method,
+            notes || null
+        ], (orderErr, orderResult) => {
+            if (orderErr) {
+                return connection.rollback(() => {
+                    console.error('❌ Error creating order:', orderErr);
+                    res.status(500).json({
+                        success: false,
+                        error: 'Errore nella creazione ordine',
+                        details: orderErr.message
+                    });
+                });
             }
 
-            const tax_amount = subtotal * 0.22; // 22% IVA
-            const total = subtotal + tax_amount - parseFloat(discount_amount);
-
-            // Inserisci ordine principale
-            const orderSql = `
-                INSERT INTO orders (
-                    table_id, user_id, customer_name, customer_phone, customer_email,
-                    status, subtotal, tax_amount, discount_amount, total,
-                    payment_method, promotion_id, notes, kitchen_notes
-                ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
-
-            const orderResult = await new Promise((resolve, reject) => {
-                connection.query(orderSql, [
-                    table_id || null,
-                    req.user?.id || 1,
-                    customer_name || null,
-                    customer_phone || null,
-                    customer_email || null,
-                    subtotal.toFixed(2),
-                    tax_amount.toFixed(2),
-                    discount_amount,
-                    total.toFixed(2),
-                    payment_method,
-                    promotion_id || null,
-                    notes || null,
-                    kitchen_notes || null
-                ], (err, result) => {
-                    if (err) reject(err);
-                    else resolve(result);
-                });
-            });
-
             const orderId = orderResult.insertId;
+            let itemsProcessed = 0;
+            let hasError = false;
 
             // Inserisci items
-            for (const item of items) {
+            items.forEach((item) => {
                 const itemSubtotal = parseFloat(item.price) * parseInt(item.quantity);
                 
                 const itemSql = `
                     INSERT INTO order_items (
                         order_id, product_variant_id, quantity, 
-                        price_at_sale, subtotal, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        price_at_sale, subtotal, notes, status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())
                 `;
 
-                await new Promise((resolve, reject) => {
-                    connection.query(itemSql, [
-                        orderId,
-                        item.product_variant_id,
-                        item.quantity,
-                        item.price,
-                        itemSubtotal.toFixed(2),
-                        item.notes || null
-                    ], (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    });
-                });
+                connection.query(itemSql, [
+                    orderId,
+                    item.product_variant_id,
+                    item.quantity,
+                    item.price,
+                    itemSubtotal.toFixed(2),
+                    item.notes || null
+                ], (itemErr) => {
+                    if (itemErr && !hasError) {
+                        hasError = true;
+                        return connection.rollback(() => {
+                            console.error('❌ Error creating order item:', itemErr);
+                            res.status(500).json({
+                                success: false,
+                                error: 'Errore nella creazione item ordine',
+                                details: itemErr.message
+                            });
+                        });
+                    }
 
-                // Aggiorna stock se necessario
-                const updateStockSql = `
-                    UPDATE product_variants 
-                    SET stock = GREATEST(0, stock - ?) 
-                    WHERE id = ?
-                `;
+                    itemsProcessed++;
+                    if (itemsProcessed === items.length && !hasError) {
+                        // Tutti gli items inseriti, aggiorna stock tramite stock_movements
+                        let stockUpdatesProcessed = 0;
+                        
+                        items.forEach((item) => {
+                            // Crea movimento stock OUT
+                            const movementSql = `
+                                INSERT INTO stock_movements (
+                                    product_variant_id, type, quantity, reason, 
+                                    reference_id, reference_type, user_id, created_at
+                                ) VALUES (?, 'out', ?, 'Vendita ordine', ?, 'order', ?, NOW())
+                            `;
 
-                await new Promise((resolve, reject) => {
-                    connection.query(updateStockSql, [
-                        item.quantity,
-                        item.product_variant_id
-                    ], (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    });
-                });
-            }
+                            connection.query(movementSql, [
+                                item.product_variant_id,
+                                item.quantity,
+                                orderId,
+                                req.user?.id || 1
+                            ], (movErr) => {
+                                if (movErr) {
+                                    console.error('⚠️ Warning - Error creating stock movement:', movErr);
+                                    // Non bloccare l'ordine per errori di stock
+                                }
 
-            // Se c'è un tavolo, aggiorna il suo stato
-            if (table_id) {
-                const updateTableSql = `
-                    UPDATE tables 
-                    SET status = 'occupied', updated_at = CURRENT_TIMESTAMP 
-                    WHERE id = ?
-                `;
+                                // Aggiorna quantità stock se esiste
+                                const updateStockSql = `
+                                    UPDATE stock 
+                                    SET quantity = GREATEST(0, quantity - ?)
+                                    WHERE product_variant_id = ?
+                                `;
 
-                await new Promise((resolve, reject) => {
-                    connection.query(updateTableSql, [table_id], (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    });
-                });
-            }
+                                connection.query(updateStockSql, [
+                                    item.quantity,
+                                    item.product_variant_id
+                                ], (stockErr) => {
+                                    if (stockErr) {
+                                        console.error('⚠️ Warning - Error updating stock:', stockErr);
+                                        // Non bloccare l'ordine per errori di stock
+                                    }
 
-            // Commit transazione
-            await new Promise((resolve, reject) => {
-                connection.commit((err) => {
-                    if (err) reject(err);
-                    else resolve();
+                                    stockUpdatesProcessed++;
+                                    if (stockUpdatesProcessed === items.length) {
+                                        // Aggiorna stato tavolo se necessario
+                                        if (table_id) {
+                                            const updateTableSql = `
+                                                UPDATE tables 
+                                                SET status = 'occupied', updated_at = NOW() 
+                                                WHERE id = ?
+                                            `;
+
+                                            connection.query(updateTableSql, [table_id], (tableErr) => {
+                                                if (tableErr) {
+                                                    console.error('⚠️ Warning - Error updating table:', tableErr);
+                                                }
+
+                                                // Commit transazione
+                                                connection.commit((commitErr) => {
+                                                    if (commitErr) {
+                                                        return connection.rollback(() => {
+                                                            console.error('❌ Commit error:', commitErr);
+                                                            res.status(500).json({
+                                                                success: false,
+                                                                error: 'Errore nel completamento ordine',
+                                                                details: commitErr.message
+                                                            });
+                                                        });
+                                                    }
+
+                                                    console.log(`✅ Created order ID: ${orderId} with ${items.length} items`);
+                                                    res.status(201).json({
+                                                        success: true,
+                                                        message: 'Ordine creato con successo',
+                                                        order: {
+                                                            id: orderId,
+                                                            total: parseFloat(total.toFixed(2)),
+                                                            items: items.length
+                                                        }
+                                                    });
+                                                });
+                                            });
+                                        } else {
+                                            // Nessun tavolo, commit diretto
+                                            connection.commit((commitErr) => {
+                                                if (commitErr) {
+                                                    return connection.rollback(() => {
+                                                        console.error('❌ Commit error:', commitErr);
+                                                        res.status(500).json({
+                                                            success: false,
+                                                            error: 'Errore nel completamento ordine',
+                                                            details: commitErr.message
+                                                        });
+                                                    });
+                                                }
+
+                                                console.log(`✅ Created order ID: ${orderId} with ${items.length} items`);
+                                                res.status(201).json({
+                                                    success: true,
+                                                    message: 'Ordine creato con successo',
+                                                    order: {
+                                                        id: orderId,
+                                                        total: parseFloat(total.toFixed(2)),
+                                                        items: items.length
+                                                    }
+                                                });
+                                            });
+                                        }
+                                    }
+                                });
+                            });
+                        });
+                    }
                 });
             });
-
-            console.log(`✅ Created order ID: ${orderId}`);
-            res.status(201).json({
-                message: 'Ordine creato con successo',
-                id: orderId,
-                total: total.toFixed(2)
-            });
-
-        } catch (err) {
-            // Rollback in caso di errore
-            await new Promise((resolve) => {
-                connection.rollback(() => resolve());
-            });
-            throw err;
-        }
-
-    } catch (error) {
-        console.error('❌ Error creating order:', error);
-        res.status(500).json({
-            error: 'Errore nella creazione ordine',
-            message: error.message
         });
-    }
+    });
 }
 
-// PATCH aggiornamento stato ordine migliorato
-async function updateOrderStatus(req, res) {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
+// PATCH aggiornamento stato ordine
+function updateOrderStatus(req, res) {
+    const { id } = req.params;
+    const { status } = req.body;
 
-        if (!status) {
-            return res.status(400).json({ error: 'Stato è obbligatorio' });
-        }
+    console.log('✏️ Updating order status:', { id, status });
 
-        // Prepara campi aggiuntivi in base al nuovo stato
-        let additionalFields = {};
-        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-
-        if (status === 'servito' && !additionalFields.served_at) {
-            additionalFields.served_at = now;
-        }
-        
-        if (status === 'pagato' && !additionalFields.paid_at) {
-            additionalFields.paid_at = now;
-            additionalFields.payment_status = 'completed';
-        }
-
-        // Costruisci query dinamica
-        let updateFields = ['status = ?'];
-        let updateValues = [status];
-
-        Object.entries(additionalFields).forEach(([field, value]) => {
-            updateFields.push(`${field} = ?`);
-            updateValues.push(value);
+    if (!status) {
+        return res.status(400).json({ 
+            success: false,
+            error: 'Stato è obbligatorio' 
         });
+    }
 
-        updateFields.push('updated_at = CURRENT_TIMESTAMP');
-        updateValues.push(id);
+    // Valida stati possibili
+    const validStatuses = ['pending', 'in_preparazione', 'pronto', 'servito', 'pagato', 'annullato'];
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({ 
+            success: false,
+            error: 'Stato non valido',
+            validStatuses
+        });
+    }
 
-        const sql = `UPDATE orders SET ${updateFields.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?`;
 
-        const result = await new Promise((resolve, reject) => {
-            connection.query(sql, updateValues, (err, result) => {
-                if (err) reject(err);
-                else resolve(result);
+    connection.query(sql, [status, id], (err, result) => {
+        if (err) {
+            console.error('❌ Error updating order status:', err);
+            return res.status(500).json({
+                success: false,
+                error: 'Errore nell\'aggiornamento stato ordine',
+                details: err.message
             });
-        });
+        }
 
         if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Ordine non trovato' });
+            return res.status(404).json({ 
+                success: false,
+                error: 'Ordine non trovato' 
+            });
         }
 
-        // Se l'ordine è completato/pagato, libera il tavolo
+        // Se l'ordine è completato/annullato, libera il tavolo
         if (['pagato', 'annullato'].includes(status)) {
             const getTableSql = 'SELECT table_id FROM orders WHERE id = ?';
             
-            const tableResult = await new Promise((resolve, reject) => {
-                connection.query(getTableSql, [id], (err, results) => {
-                    if (err) reject(err);
-                    else resolve(results);
-                });
-            });
+            connection.query(getTableSql, [id], (tableErr, tableResults) => {
+                if (!tableErr && tableResults.length > 0 && tableResults[0].table_id) {
+                    const updateTableSql = `
+                        UPDATE tables 
+                        SET status = 'free', updated_at = NOW() 
+                        WHERE id = ?
+                    `;
 
-            if (tableResult.length > 0 && tableResult[0].table_id) {
-                const updateTableSql = `
-                    UPDATE tables 
-                    SET status = 'free', updated_at = CURRENT_TIMESTAMP 
-                    WHERE id = ?
-                `;
-
-                await new Promise((resolve, reject) => {
-                    connection.query(updateTableSql, [tableResult[0].table_id], (err) => {
-                        if (err) reject(err);
-                        else resolve();
+                    connection.query(updateTableSql, [tableResults[0].table_id], (updateTableErr) => {
+                        if (updateTableErr) {
+                            console.error('⚠️ Warning - Error freeing table:', updateTableErr);
+                        }
                     });
-                });
-            }
+                }
+            });
         }
 
         console.log(`✅ Updated order ${id} to status: ${status}`);
         res.json({ 
+            success: true,
             message: 'Stato ordine aggiornato con successo',
-            id: parseInt(id),
-            status,
-            ...additionalFields
+            order: {
+                id: parseInt(id),
+                status
+            }
         });
-
-    } catch (error) {
-        console.error('❌ Error updating order status:', error);
-        res.status(500).json({
-            error: 'Errore nell\'aggiornamento stato ordine',
-            message: error.message
-        });
-    }
+    });
 }
 
-// DELETE ordine migliorato
-async function deleteOrder(req, res) {
-    try {
-        const { id } = req.params;
+// DELETE ordine
+function deleteOrder(req, res) {
+    const { id } = req.params;
 
-        // Inizia transazione
-        await new Promise((resolve, reject) => {
-            connection.beginTransaction((err) => {
-                if (err) reject(err);
-                else resolve();
+    console.log('🗑️ Deleting order:', id);
+
+    // Inizia transazione
+    connection.beginTransaction((err) => {
+        if (err) {
+            console.error('❌ Transaction error:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nell\'avvio transazione',
+                details: err.message 
             });
-        });
+        }
 
-        try {
-            // Ottieni info ordine
-            const getOrderSql = 'SELECT table_id, status FROM orders WHERE id = ?';
-            
-            const orderInfo = await new Promise((resolve, reject) => {
-                connection.query(getOrderSql, [id], (err, results) => {
-                    if (err) reject(err);
-                    else resolve(results);
+        // Ottieni info ordine
+        const getOrderSql = 'SELECT table_id, status FROM orders WHERE id = ?';
+        
+        connection.query(getOrderSql, [id], (orderErr, orderInfo) => {
+            if (orderErr) {
+                return connection.rollback(() => {
+                    console.error('❌ Error getting order info:', orderErr);
+                    res.status(500).json({ 
+                        success: false,
+                        error: 'Errore nel caricamento info ordine',
+                        details: orderErr.message 
+                    });
                 });
-            });
+            }
 
             if (orderInfo.length === 0) {
-                return res.status(404).json({ message: 'Ordine non trovato' });
+                return connection.rollback(() => {
+                    res.status(404).json({ 
+                        success: false,
+                        error: 'Ordine non trovato' 
+                    });
+                });
             }
 
             // Non permettere eliminazione di ordini pagati
             if (['pagato'].includes(orderInfo[0].status)) {
-                return res.status(400).json({ 
-                    error: 'Non è possibile eliminare un ordine già pagato' 
+                return connection.rollback(() => {
+                    res.status(400).json({ 
+                        success: false,
+                        error: 'Non è possibile eliminare un ordine già pagato' 
+                    });
                 });
             }
 
             // Elimina items ordine
             const deleteItemsSql = 'DELETE FROM order_items WHERE order_id = ?';
             
-            await new Promise((resolve, reject) => {
-                connection.query(deleteItemsSql, [id], (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                });
-            });
-
-            // Elimina ordine
-            const deleteOrderSql = 'DELETE FROM orders WHERE id = ?';
-            
-            const result = await new Promise((resolve, reject) => {
-                connection.query(deleteOrderSql, [id], (err, result) => {
-                    if (err) reject(err);
-                    else resolve(result);
-                });
-            });
-
-            // Libera tavolo se necessario
-            if (orderInfo[0].table_id) {
-                const updateTableSql = `
-                    UPDATE tables 
-                    SET status = 'free', updated_at = CURRENT_TIMESTAMP 
-                    WHERE id = ?
-                `;
-
-                await new Promise((resolve, reject) => {
-                    connection.query(updateTableSql, [orderInfo[0].table_id], (err) => {
-                        if (err) reject(err);
-                        else resolve();
+            connection.query(deleteItemsSql, [id], (itemsErr) => {
+                if (itemsErr) {
+                    return connection.rollback(() => {
+                        console.error('❌ Error deleting order items:', itemsErr);
+                        res.status(500).json({ 
+                            success: false,
+                            error: 'Errore nell\'eliminazione items',
+                            details: itemsErr.message 
+                        });
                     });
-                });
-            }
+                }
 
-            // Commit transazione
-            await new Promise((resolve, reject) => {
-                connection.commit((err) => {
-                    if (err) reject(err);
-                    else resolve();
+                // Elimina ordine
+                const deleteOrderSql = 'DELETE FROM orders WHERE id = ?';
+                
+                connection.query(deleteOrderSql, [id], (deleteErr, result) => {
+                    if (deleteErr) {
+                        return connection.rollback(() => {
+                            console.error('❌ Error deleting order:', deleteErr);
+                            res.status(500).json({ 
+                                success: false,
+                                error: 'Errore nell\'eliminazione ordine',
+                                details: deleteErr.message 
+                            });
+                        });
+                    }
+
+                    // Libera tavolo se necessario
+                    if (orderInfo[0].table_id) {
+                        const updateTableSql = `
+                            UPDATE tables 
+                            SET status = 'free', updated_at = NOW() 
+                            WHERE id = ?
+                        `;
+
+                        connection.query(updateTableSql, [orderInfo[0].table_id], (tableErr) => {
+                            if (tableErr) {
+                                console.error('⚠️ Warning - Error freeing table:', tableErr);
+                            }
+
+                            // Commit transazione
+                            connection.commit((commitErr) => {
+                                if (commitErr) {
+                                    return connection.rollback(() => {
+                                        console.error('❌ Commit error:', commitErr);
+                                        res.status(500).json({ 
+                                            success: false,
+                                            error: 'Errore nel completamento eliminazione',
+                                            details: commitErr.message 
+                                        });
+                                    });
+                                }
+
+                                console.log(`✅ Deleted order ID: ${id}`);
+                                res.json({ 
+                                    success: true,
+                                    message: 'Ordine eliminato con successo' 
+                                });
+                            });
+                        });
+                    } else {
+                        // Nessun tavolo, commit diretto
+                        connection.commit((commitErr) => {
+                            if (commitErr) {
+                                return connection.rollback(() => {
+                                    console.error('❌ Commit error:', commitErr);
+                                    res.status(500).json({ 
+                                        success: false,
+                                        error: 'Errore nel completamento eliminazione',
+                                        details: commitErr.message 
+                                    });
+                                });
+                            }
+
+                            console.log(`✅ Deleted order ID: ${id}`);
+                            res.json({ 
+                                success: true,
+                                message: 'Ordine eliminato con successo' 
+                            });
+                        });
+                    }
                 });
             });
-
-            console.log(`✅ Deleted order ID: ${id}`);
-            res.json({ message: 'Ordine eliminato con successo' });
-
-        } catch (err) {
-            // Rollback in caso di errore
-            await new Promise((resolve) => {
-                connection.rollback(() => resolve());
-            });
-            throw err;
-        }
-
-    } catch (error) {
-        console.error('❌ Error deleting order:', error);
-        res.status(500).json({
-            error: 'Errore nell\'eliminazione ordine',
-            message: error.message
         });
-    }
+    });
 }
 
-// GET statistiche ordini migliorate
+// GET statistiche ordini
 function getOrdersStats(req, res) {
+    console.log('📊 Getting orders statistics');
+    
     const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
+    
     const statsQuery = `
         SELECT 
             COUNT(*) as total_orders,
             COUNT(CASE WHEN DATE(created_at) = ? THEN 1 END) as today_orders,
-            COUNT(CASE WHEN DATE(created_at) = ? THEN 1 END) as yesterday_orders,
             COUNT(CASE WHEN status IN ('pending', 'in_preparazione') THEN 1 END) as pending_orders,
             COUNT(CASE WHEN status = 'pronto' THEN 1 END) as ready_orders,
             COUNT(CASE WHEN status IN ('servito', 'pagato') THEN 1 END) as completed_orders,
             COUNT(CASE WHEN status = 'annullato' THEN 1 END) as cancelled_orders,
             COALESCE(SUM(CASE WHEN DATE(created_at) = ? THEN total ELSE 0 END), 0) as today_revenue,
-            COALESCE(SUM(CASE WHEN DATE(created_at) = ? THEN total ELSE 0 END), 0) as yesterday_revenue,
             COALESCE(AVG(total), 0) as average_order_value,
             COUNT(CASE WHEN table_id IS NOT NULL THEN 1 END) as dine_in_orders,
             COUNT(CASE WHEN table_id IS NULL THEN 1 END) as takeaway_orders
@@ -666,19 +760,22 @@ function getOrdersStats(req, res) {
         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
     `;
 
-    connection.query(statsQuery, [today, yesterdayStr, today, yesterdayStr], (err, results) => {
+    connection.query(statsQuery, [today, today], (err, results) => {
         if (err) {
-            console.error('Error fetching orders stats:', err);
+            console.error('❌ Error fetching orders stats:', err);
             return res.status(500).json({ 
-                error: err.message,
+                success: false,
+                error: 'Errore nel caricamento statistiche',
+                details: err.message,
                 // Fallback data
-                total_orders: 0,
-                today_orders: 0,
-                pending_orders: 0,
-                ready_orders: 0,
-                completed_orders: 0,
-                today_revenue: 0,
-                revenue_trend: 0
+                stats: {
+                    total_orders: 0,
+                    today_orders: 0,
+                    pending_orders: 0,
+                    ready_orders: 0,
+                    completed_orders: 0,
+                    today_revenue: 0
+                }
             });
         }
 
@@ -688,32 +785,28 @@ function getOrdersStats(req, res) {
         const processedStats = {
             total_orders: parseInt(stats.total_orders) || 0,
             today_orders: parseInt(stats.today_orders) || 0,
-            yesterday_orders: parseInt(stats.yesterday_orders) || 0,
             pending_orders: parseInt(stats.pending_orders) || 0,
             ready_orders: parseInt(stats.ready_orders) || 0,
             completed_orders: parseInt(stats.completed_orders) || 0,
             cancelled_orders: parseInt(stats.cancelled_orders) || 0,
             today_revenue: parseFloat(stats.today_revenue) || 0,
-            yesterday_revenue: parseFloat(stats.yesterday_revenue) || 0,
             average_order_value: parseFloat(stats.average_order_value) || 0,
             dine_in_orders: parseInt(stats.dine_in_orders) || 0,
             takeaway_orders: parseInt(stats.takeaway_orders) || 0
         };
-        
-        // Calcola trend in modo sicuro
-        const revenueChange = processedStats.yesterday_revenue > 0 
-            ? ((processedStats.today_revenue - processedStats.yesterday_revenue) / processedStats.yesterday_revenue * 100)
-            : 0;
 
-        processedStats.revenue_trend = parseFloat(revenueChange.toFixed(1));
-
-        console.log('✅ Orders stats processed:', processedStats);
-        res.json(processedStats);
+        console.log('✅ Orders stats calculated:', processedStats);
+        res.json({
+            success: true,
+            stats: processedStats
+        });
     });
 }
 
-// GET tavoli con stato
+// GET tavoli con stato corrente
 function getTablesWithStatus(req, res) {
+    console.log('🏪 Getting tables with current status');
+    
     const sql = `
         SELECT 
             t.*,
@@ -726,107 +819,48 @@ function getTablesWithStatus(req, res) {
             AND o.status IN ('pending', 'in_preparazione', 'pronto', 'servito')
         LEFT JOIN order_items oi ON o.id = oi.order_id
         WHERE t.active = 1
-        GROUP BY t.id
+        GROUP BY t.id, t.number, t.location, t.capacity, t.status, t.active, t.notes, t.created_at, t.updated_at,
+                 o.id, o.total, o.status
         ORDER BY t.number
     `;
     
     connection.query(sql, (err, results) => {
         if (err) {
-            console.error('Error fetching tables:', err);
-            return res.status(500).json({ error: err.message });
+            console.error('❌ Error fetching tables:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento tavoli',
+                details: err.message 
+            });
         }
         
         const tables = results.map(table => ({
             ...table,
             active: Boolean(table.active),
+            current_order_total: table.current_order_total ? parseFloat(table.current_order_total) : null,
+            current_order_items: parseInt(table.current_order_items) || 0,
             currentOrder: table.current_order_id ? {
                 id: table.current_order_id,
-                total: table.current_order_total,
+                total: parseFloat(table.current_order_total),
                 status: table.current_order_status,
-                items: table.current_order_items || 0
+                items: parseInt(table.current_order_items) || 0
             } : null
         }));
         
-        res.json(tables);
-    });
-}
-
-/////////////////////////
-// FUNZIONI ESISTENTI (mantenute per compatibilità)
-/////////////////////////
-
-// Funzione per creare ordini dal frontend (semplificata - deprecata)
-function createSimpleOrder(req, res) {
-    const { 
-        table_number, 
-        customer_name, 
-        items = [], 
-        notes,
-        status = 'pending' 
-    } = req.body;
-
-    if (!items || items.length === 0) {
-        return res.status(400).json({ message: 'L\'ordine deve contenere almeno un prodotto' });
-    }
-
-    let total = 0;
-    items.forEach(item => {
-        total += parseFloat(item.price) * parseInt(item.quantity);
-    });
-
-    const orderSql = `
-        INSERT INTO orders (table_id, user_id, status, total, payment_method) 
-        VALUES (?, 1, ?, ?, 'contanti')
-    `;
-    
-    connection.query(orderSql, [table_number || 1, status, total.toFixed(2)], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        
-        const orderId = result.insertId;
-        
-        let itemsInserted = 0;
-        const totalItems = items.length;
-        
-        items.forEach(item => {
-            const itemSql = `
-                INSERT INTO order_items (order_id, product_variant_id, quantity, price_at_sale, subtotal, note)
-                VALUES (?, ?, ?, ?, ?, ?)
-            `;
-            
-            const subtotal = parseFloat(item.price) * parseInt(item.quantity);
-            
-            connection.query(itemSql, [
-                orderId, 
-                item.product_id || 1, 
-                item.quantity, 
-                item.price, 
-                subtotal, 
-                item.notes
-            ], (err2) => {
-                if (err2) console.error('Error inserting item:', err2);
-                
-                itemsInserted++;
-                if (itemsInserted === totalItems) {
-                    res.status(201).json({
-                        message: 'Ordine creato con successo',
-                        id: orderId
-                    });
-                }
-            });
+        console.log(`✅ Found ${tables.length} tables`);
+        res.json({
+            success: true,
+            tables: tables
         });
     });
 }
 
 module.exports = {
-    // Funzioni principali migliorate
     getAllOrders,
     getOrderById,
     createOrder,
     updateOrderStatus,
     deleteOrder,
     getOrdersStats,
-    getTablesWithStatus,
-    
-    // Funzioni legacy (per compatibilità)
-    createSimpleOrder
+    getTablesWithStatus
 };

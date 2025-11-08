@@ -33,29 +33,38 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// ===== MIDDLEWARE DI AUTENTICAZIONE =====
+// ===== MIDDLEWARE DI AUTENTICAZIONE CORRETTO =====
 const authMiddleware = (req, res, next) => {
-  // Route pubbliche che non richiedono autenticazione
+  // Route pubbliche che NON richiedono autenticazione
   const publicRoutes = [
     '/api/auth/login',
     '/api/auth/register', 
     '/api/auth/logout',
-    '/api/auth/status'
+    '/api/auth/status',
+    '/health',
+    '/'
   ];
   
-  // Permetti accesso alle route pubbliche
-  if (publicRoutes.some(route => req.path.startsWith(route))) {
+  // Controlla se è una route pubblica
+  const isPublicRoute = publicRoutes.some(route => {
+    return req.path === route || req.path.startsWith(route);
+  });
+  
+  if (isPublicRoute) {
+    console.log(`✅ Public route accessed: ${req.method} ${req.path}`);
     return next();
   }
   
   // Per development, permetti tutto (RIMUOVI IN PRODUZIONE)
   if (process.env.NODE_ENV === 'development') {
+    console.log(`🔧 Development mode - allowing: ${req.method} ${req.path}`);
     req.user = req.user || { id: 1, username: 'admin', role: 'admin' };
     return next();
   }
   
   // Controllo autenticazione normale
   if (req.isAuthenticated() && req.user) {
+    console.log(`✅ Authenticated access: ${req.user.username} → ${req.method} ${req.path}`);
     return next();
   }
   
@@ -84,7 +93,7 @@ app.get('/health', (req, res) => {
 // ===== ROUTE AUTENTICAZIONE (PUBBLICHE) =====
 app.use('/api/auth', require('./routes/auth'));
 
-// ===== APPLICA MIDDLEWARE AUTENTICAZIONE =====
+// ===== APPLICA MIDDLEWARE AUTENTICAZIONE SOLO ALLE ROUTE PROTETTE =====
 app.use('/api', authMiddleware);
 
 // ===== ROUTE API PROTETTE =====

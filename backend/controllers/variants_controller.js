@@ -31,7 +31,7 @@ function getProductsForVariants(req, res) {
     });
 }
 
-// GET tutte le varianti (CORRETTA)
+// GET tutte le varianti (CORRETTO)
 function getAllVariants(req, res) {
     const { 
         product_id, 
@@ -41,6 +41,7 @@ function getAllVariants(req, res) {
         offset = 0 
     } = req.query;
     
+    // QUERY CORRETTA - rimuovi GROUP BY e usa aggregazioni appropriate
     let sql = `
         SELECT 
             pv.id,
@@ -82,17 +83,22 @@ function getAllVariants(req, res) {
         params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
     
-    sql += ` GROUP BY pv.id ORDER BY p.name, pv.sort_order, pv.name LIMIT ? OFFSET ?`;
+    // RIMUOVI GROUP BY - non è necessario se ogni variante ha una sola riga stock
+    sql += ` ORDER BY p.name, pv.sort_order, pv.name LIMIT ? OFFSET ?`;
     params.push(parseInt(limit), parseInt(offset));
+    
+    console.log('🔍 Executing variants query:', { sql, params });
     
     connection.query(sql, params, (err, results) => {
         if (err) {
-            console.error('Error fetching variants:', err);
+            console.error('❌ Error fetching variants:', err);
             return res.status(500).json({ 
                 error: 'Errore nel caricamento varianti',
                 details: err.message 
             });
         }
+        
+        console.log(`✅ Fetched ${results.length} variants successfully`);
         
         // Aggiungi movimento count con query separata per sicurezza
         const variantIds = results.map(v => v.id);
@@ -121,8 +127,8 @@ function getAllVariants(req, res) {
                 // Calcola statistiche
                 const stats = calculateVariantStats(results);
                 
-                console.log(`✅ Fetched ${results.length} variants`);
                 res.json({
+                    success: true,
                     variants: results || [],
                     stats,
                     pagination: {
@@ -133,15 +139,18 @@ function getAllVariants(req, res) {
                 });
             });
         } else {
+            // Nessuna variante trovata
             const stats = calculateVariantStats(results);
             
+            console.log('ℹ️ No variants found, returning empty result');
             res.json({
-                variants: results || [],
+                success: true,
+                variants: [],
                 stats,
                 pagination: {
                     limit: parseInt(limit),
                     offset: parseInt(offset),
-                    total: results.length
+                    total: 0
                 }
             });
         }

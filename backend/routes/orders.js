@@ -2,17 +2,25 @@ const express = require('express');
 const router = express.Router();
 const ordersController = require('../controllers/orders_controller');
 
-// Routes principali per ordini
-router.get('/stats', ordersController.getOrdersStats);           // GET /api/orders/stats
-router.get('/tables', ordersController.getTablesWithStatus);     // GET /api/orders/tables
-router.get('/', ordersController.getAllOrders);                 // GET /api/orders
-router.get('/:id', ordersController.getOrderById);              // GET /api/orders/:id
+// GET statistiche ordini (prima di /:id)
+router.get('/stats', ordersController.getOrdersStats);
 
-router.post('/', ordersController.createOrder);                 // POST /api/orders
-router.patch('/:id', ordersController.updateOrderStatus);       // PATCH /api/orders/:id
-router.delete('/:id', ordersController.deleteOrder);            // DELETE /api/orders/:id
+// GET tavoli con stato (prima di /:id)
+router.get('/tables', ordersController.getTablesWithStatus);
 
-// Routes legacy (per compatibilità)
-router.post('/simple', ordersController.createSimpleOrder);     // POST /api/orders/simple
+// GET tutti gli ordini con filtri
+router.get('/', ordersController.getAllOrders);
+
+// GET singolo ordine per ID
+router.get('/:id', ordersController.getOrderById);
+
+// POST nuovo ordine
+router.post('/', ordersController.createOrder);
+
+// PATCH aggiornamento stato ordine
+router.patch('/:id', ordersController.updateOrderStatus);
+
+// DELETE ordine
+router.delete('/:id', ordersController.deleteOrder);
 
 module.exports = router;
