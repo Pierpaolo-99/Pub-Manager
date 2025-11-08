@@ -34,78 +34,106 @@ function calculateDateRange(period) {
     return { startDate, endDate };
 }
 
-// GET report vendite
+// GET report vendite CORRETTO
 function getSalesReport(req, res) {
-    const { period = 'week', group_by = 'day' } = req.query;
-    const { startDate, endDate } = calculateDateRange(period);
+    const { period = 'week', group_by = 'day', start_date, end_date } = req.query;
+    
+    console.log('📈 Getting sales report:', { period, group_by });
+    
+    let startDate, endDate;
+    
+    if (start_date && end_date) {
+        startDate = new Date(start_date);
+        endDate = new Date(end_date);
+        endDate.setHours(23, 59, 59, 999);
+    } else {
+        ({ startDate, endDate } = calculateDateRange(period));
+    }
     
     let dateFormat;
     switch(group_by) {
         case 'hour':
-            dateFormat = "DATE_FORMAT(created_at, '%Y-%m-%d %H:00:00')";
+            dateFormat = "DATE_FORMAT(o.created_at, '%Y-%m-%d %H:00:00')";
             break;
         case 'day':
-            dateFormat = "DATE(created_at)";
+            dateFormat = "DATE(o.created_at)";
             break;
         case 'month':
-            dateFormat = "DATE_FORMAT(created_at, '%Y-%m')";
+            dateFormat = "DATE_FORMAT(o.created_at, '%Y-%m')";
             break;
         default:
-            dateFormat = "DATE(created_at)";
+            dateFormat = "DATE(o.created_at)";
     }
     
     const sql = `
         SELECT 
             ${dateFormat} as period,
-            COUNT(*) as orders_count,
-            SUM(total) as total_revenue,
-            SUM(subtotal) as subtotal_revenue,
-            SUM(tax_amount) as total_tax,
-            SUM(total_discount) as total_discounts,
-            AVG(total) as avg_order_value,
-            MIN(total) as min_order,
-            MAX(total) as max_order,
-            COUNT(DISTINCT customer_name) as unique_customers,
-            SUM(CASE WHEN payment_method = 'cash' THEN total ELSE 0 END) as cash_revenue,
-            SUM(CASE WHEN payment_method = 'card' THEN total ELSE 0 END) as card_revenue,
-            SUM(CASE WHEN order_type = 'dine_in' THEN total ELSE 0 END) as dine_in_revenue,
-            SUM(CASE WHEN order_type = 'takeaway' THEN total ELSE 0 END) as takeaway_revenue,
-            SUM(CASE WHEN order_type = 'delivery' THEN total ELSE 0 END) as delivery_revenue
-        FROM orders 
-        WHERE status = 'completed' 
-            AND created_at BETWEEN ? AND ?
+            COUNT(o.id) as orders_count,
+            COALESCE(SUM(o.total), 0) as total_revenue,
+            COALESCE(AVG(o.total), 0) as avg_order_value,
+            COALESCE(MIN(o.total), 0) as min_order,
+            COALESCE(MAX(o.total), 0) as max_order,
+            COUNT(DISTINCT o.user_id) as unique_waiters,
+            COALESCE(SUM(CASE WHEN o.payment_method = 'contanti' THEN o.total ELSE 0 END), 0) as cash_revenue,
+            COALESCE(SUM(CASE WHEN o.payment_method = 'carta' THEN o.total ELSE 0 END), 0) as card_revenue,
+            COALESCE(SUM(CASE WHEN o.payment_method = 'bancomat' THEN o.total ELSE 0 END), 0) as debit_revenue,
+            COALESCE(SUM(CASE WHEN o.table_id IS NOT NULL THEN o.total ELSE 0 END), 0) as dine_in_revenue,
+            COALESCE(SUM(CASE WHEN o.table_id IS NULL THEN o.total ELSE 0 END), 0) as takeaway_revenue,
+            COUNT(CASE WHEN o.table_id IS NOT NULL THEN 1 END) as dine_in_orders,
+            COUNT(CASE WHEN o.table_id IS NULL THEN 1 END) as takeaway_orders
+        FROM orders o
+        WHERE o.status IN ('servito', 'pagato')
+            AND o.created_at BETWEEN ? AND ?
         GROUP BY ${dateFormat}
         ORDER BY period ASC
     `;
     
     connection.query(sql, [startDate, endDate], (err, results) => {
         if (err) {
-            console.error('Error fetching sales report:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento report vendite' });
+            console.error('❌ Error fetching sales report:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento report vendite',
+                details: err.message 
+            });
         }
         
         const salesData = results.map(row => ({
-            ...row,
+            period: row.period,
+            orders_count: parseInt(row.orders_count) || 0,
             total_revenue: parseFloat(row.total_revenue) || 0,
-            subtotal_revenue: parseFloat(row.subtotal_revenue) || 0,
-            total_tax: parseFloat(row.total_tax) || 0,
-            total_discounts: parseFloat(row.total_discounts) || 0,
             avg_order_value: parseFloat(row.avg_order_value) || 0,
             min_order: parseFloat(row.min_order) || 0,
             max_order: parseFloat(row.max_order) || 0,
-            cash_revenue: parseFloat(row.cash_revenue) || 0,
-            card_revenue: parseFloat(row.card_revenue) || 0,
-            dine_in_revenue: parseFloat(row.dine_in_revenue) || 0,
-            takeaway_revenue: parseFloat(row.takeaway_revenue) || 0,
-            delivery_revenue: parseFloat(row.delivery_revenue) || 0
+            unique_waiters: parseInt(row.unique_waiters) || 0,
+            payment_breakdown: {
+                cash: parseFloat(row.cash_revenue) || 0,
+                card: parseFloat(row.card_revenue) || 0,
+                debit: parseFloat(row.debit_revenue) || 0
+            },
+            order_type_breakdown: {
+                dine_in: {
+                    orders: parseInt(row.dine_in_orders) || 0,
+                    revenue: parseFloat(row.dine_in_revenue) || 0
+                },
+                takeaway: {
+                    orders: parseInt(row.takeaway_orders) || 0,
+                    revenue: parseFloat(row.takeaway_revenue) || 0
+                }
+            }
         }));
         
         // Calcola totali del periodo
-        const summary = calculateSalesSummary(salesData, startDate, endDate);
+        const summary = calculateSalesSummary(salesData);
         
+        console.log(`✅ Sales report calculated for ${salesData.length} periods`);
         res.json({
+            success: true,
             period: period,
-            date_range: { start: startDate, end: endDate },
+            date_range: { 
+                start: startDate.toISOString().split('T')[0], 
+                end: endDate.toISOString().split('T')[0] 
+            },
             group_by: group_by,
             data: salesData,
             summary: summary
@@ -113,36 +141,39 @@ function getSalesReport(req, res) {
     });
 }
 
-// GET prodotti top
+// GET prodotti top CORRETTO
 function getTopProducts(req, res) {
     const { period = 'week', limit = 10, category_id } = req.query;
+    
+    console.log('🏆 Getting top products report:', { period, limit, category_id });
+    
     const { startDate, endDate } = calculateDateRange(period);
     
     let sql = `
         SELECT 
             p.id as product_id,
             p.name as product_name,
-            p.price as product_price,
+            p.base_price as product_price,
+            pv.name as variant_name,
+            pv.sku as variant_sku,
             c.name as category_name,
             c.id as category_id,
+            c.color as category_color,
             SUM(oi.quantity) as total_quantity_sold,
             COUNT(DISTINCT oi.order_id) as orders_count,
-            SUM(oi.quantity * oi.price) as total_revenue,
-            AVG(oi.price) as avg_price,
-            SUM(oi.quantity * oi.price) / SUM(oi.quantity) as avg_unit_revenue,
-            (SUM(oi.quantity * oi.price) / (
-                SELECT SUM(total) FROM orders 
-                WHERE status = 'completed' AND created_at BETWEEN ? AND ?
-            )) * 100 as revenue_percentage
+            COALESCE(SUM(oi.subtotal), 0) as total_revenue,
+            COALESCE(AVG(oi.price_at_sale), 0) as avg_price,
+            COALESCE(SUM(oi.subtotal) / NULLIF(SUM(oi.quantity), 0), 0) as avg_unit_revenue
         FROM order_items oi
-        JOIN orders o ON oi.order_id = o.id
-        JOIN products p ON oi.product_id = p.id
-        JOIN categories c ON p.category_id = c.id
-        WHERE o.status = 'completed'
+        INNER JOIN orders o ON oi.order_id = o.id
+        INNER JOIN product_variants pv ON oi.product_variant_id = pv.id
+        INNER JOIN products p ON pv.product_id = p.id
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE o.status IN ('servito', 'pagato')
             AND o.created_at BETWEEN ? AND ?
     `;
     
-    const params = [startDate, endDate, startDate, endDate];
+    const params = [startDate, endDate];
     
     if (category_id) {
         sql += ` AND c.id = ?`;
@@ -150,7 +181,7 @@ function getTopProducts(req, res) {
     }
     
     sql += `
-        GROUP BY p.id, p.name, p.price, c.name, c.id
+        GROUP BY p.id, p.name, p.base_price, pv.name, pv.sku, c.name, c.id, c.color
         ORDER BY total_quantity_sold DESC
         LIMIT ?
     `;
@@ -159,127 +190,189 @@ function getTopProducts(req, res) {
     
     connection.query(sql, params, (err, results) => {
         if (err) {
-            console.error('Error fetching top products:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento prodotti top' });
+            console.error('❌ Error fetching top products:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento prodotti top',
+                details: err.message 
+            });
         }
         
-        const topProducts = results.map(product => ({
-            ...product,
-            product_price: parseFloat(product.product_price) || 0,
+        const topProducts = results.map((product, index) => ({
+            rank: index + 1,
+            product_id: product.product_id,
+            product_name: product.product_name,
+            variant_name: product.variant_name,
+            full_name: `${product.product_name}${product.variant_name !== product.product_name ? ` - ${product.variant_name}` : ''}`,
+            sku: product.variant_sku,
+            category: product.category_name || 'Nessuna categoria',
+            category_color: product.category_color || '#6B7280',
+            base_price: parseFloat(product.product_price) || 0,
             total_quantity_sold: parseInt(product.total_quantity_sold) || 0,
             orders_count: parseInt(product.orders_count) || 0,
             total_revenue: parseFloat(product.total_revenue) || 0,
             avg_price: parseFloat(product.avg_price) || 0,
-            avg_unit_revenue: parseFloat(product.avg_unit_revenue) || 0,
-            revenue_percentage: parseFloat(product.revenue_percentage) || 0
+            avg_unit_revenue: parseFloat(product.avg_unit_revenue) || 0
         }));
         
+        // Calcola percentuale di revenue per ogni prodotto
+        const totalRevenue = topProducts.reduce((sum, p) => sum + p.total_revenue, 0);
+        
+        const productsWithPercentage = topProducts.map(product => ({
+            ...product,
+            revenue_percentage: totalRevenue > 0 ? 
+                Math.round((product.total_revenue / totalRevenue) * 10000) / 100 : 0
+        }));
+        
+        console.log(`✅ Top ${productsWithPercentage.length} products calculated`);
         res.json({
+            success: true,
             period: period,
-            date_range: { start: startDate, end: endDate },
+            date_range: { 
+                start: startDate.toISOString().split('T')[0], 
+                end: endDate.toISOString().split('T')[0] 
+            },
             category_filter: category_id || 'all',
-            products: topProducts
+            products: productsWithPercentage,
+            summary: {
+                total_products: productsWithPercentage.length,
+                total_revenue: totalRevenue,
+                total_quantity: productsWithPercentage.reduce((sum, p) => sum + p.total_quantity_sold, 0)
+            }
         });
     });
 }
 
-// GET report inventario
+// GET report inventario CORRETTO (usa tabella stock)
 function getInventoryReport(req, res) {
-    const { status = 'all', supplier_id, expiring_days = 30 } = req.query;
+    const { status = 'all', supplier_filter, expiring_days = 30 } = req.query;
+    
+    console.log('📦 Getting inventory report:', { status, supplier_filter, expiring_days });
     
     let sql = `
         SELECT 
-            i.id as ingredient_id,
-            i.name as ingredient_name,
-            i.unit as ingredient_unit,
-            i.cost_per_unit as ingredient_cost,
-            i.category as ingredient_category,
-            ist.quantity as stock_quantity,
-            ist.available_quantity,
-            ist.reserved_quantity,
-            ist.min_threshold,
-            ist.max_threshold,
-            ist.supplier,
-            ist.batch_number,
-            ist.expiry_date,
-            ist.cost_per_unit as current_cost,
-            ist.total_value,
-            ist.last_updated,
+            s.id as stock_id,
+            s.quantity as stock_quantity,
+            s.unit,
+            s.min_threshold,
+            s.max_threshold,
+            s.cost_per_unit,
+            s.supplier,
+            s.batch_number,
+            s.expiry_date,
+            s.notes as stock_notes,
+            s.last_restock_date,
+            pv.name as variant_name,
+            pv.sku as variant_sku,
+            p.name as product_name,
+            p.image_url as product_image,
+            c.name as category_name,
+            c.color as category_color,
+            (s.quantity * s.cost_per_unit) as total_value,
             CASE 
-                WHEN ist.available_quantity <= 0 THEN 'esaurito'
-                WHEN ist.available_quantity <= ist.min_threshold THEN 'critico'
-                WHEN ist.expiry_date IS NOT NULL AND ist.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY) THEN 'scadenza_vicina'
-                WHEN ist.available_quantity >= ist.max_threshold THEN 'eccesso'
+                WHEN s.quantity <= 0 THEN 'esaurito'
+                WHEN s.quantity <= s.min_threshold THEN 'critico'
+                WHEN s.expiry_date IS NOT NULL AND s.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY) THEN 'scadenza_vicina'
+                WHEN s.max_threshold IS NOT NULL AND s.quantity >= s.max_threshold THEN 'eccesso'
                 ELSE 'ok'
             END as stock_status,
-            DATEDIFF(ist.expiry_date, CURDATE()) as days_to_expiry
-        FROM ingredients i
-        LEFT JOIN ingredient_stock ist ON i.id = ist.ingredient_id
+            CASE 
+                WHEN s.expiry_date IS NOT NULL 
+                THEN DATEDIFF(s.expiry_date, CURDATE()) 
+                ELSE NULL 
+            END as days_to_expiry
+        FROM stock s
+        INNER JOIN product_variants pv ON s.product_variant_id = pv.id
+        INNER JOIN products p ON pv.product_id = p.id
+        LEFT JOIN categories c ON p.category_id = c.id
         WHERE 1=1
     `;
     
     const params = [parseInt(expiring_days)];
     
     if (status !== 'all') {
-        const statusConditions = {
-            'esaurito': 'ist.available_quantity <= 0',
-            'critico': 'ist.available_quantity > 0 AND ist.available_quantity <= ist.min_threshold',
-            'scadenza_vicina': 'ist.expiry_date IS NOT NULL AND ist.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)',
-            'eccesso': 'ist.available_quantity >= ist.max_threshold',
-            'ok': 'ist.available_quantity > ist.min_threshold AND (ist.expiry_date IS NULL OR ist.expiry_date > DATE_ADD(CURDATE(), INTERVAL ? DAY)) AND (ist.max_threshold IS NULL OR ist.available_quantity < ist.max_threshold)'
-        };
-        
-        if (statusConditions[status]) {
-            sql += ` AND (${statusConditions[status]})`;
-            if (status === 'scadenza_vicina' || status === 'ok') {
+        switch(status) {
+            case 'esaurito':
+                sql += ` AND s.quantity <= 0`;
+                break;
+            case 'critico':
+                sql += ` AND s.quantity > 0 AND s.quantity <= s.min_threshold`;
+                break;
+            case 'scadenza_vicina':
+                sql += ` AND s.expiry_date IS NOT NULL AND s.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)`;
                 params.push(parseInt(expiring_days));
-            }
+                break;
+            case 'eccesso':
+                sql += ` AND s.max_threshold IS NOT NULL AND s.quantity >= s.max_threshold`;
+                break;
+            case 'ok':
+                sql += ` AND s.quantity > s.min_threshold 
+                         AND (s.expiry_date IS NULL OR s.expiry_date > DATE_ADD(CURDATE(), INTERVAL ? DAY)) 
+                         AND (s.max_threshold IS NULL OR s.quantity < s.max_threshold)`;
+                params.push(parseInt(expiring_days));
+                break;
         }
     }
     
-    if (supplier_id) {
-        sql += ` AND ist.supplier = ?`;
-        params.push(supplier_id);
+    if (supplier_filter) {
+        sql += ` AND s.supplier LIKE ?`;
+        params.push(`%${supplier_filter}%`);
     }
     
     sql += ` ORDER BY 
         CASE 
-            WHEN ist.available_quantity <= 0 THEN 1
-            WHEN ist.available_quantity <= ist.min_threshold THEN 2
-            WHEN ist.expiry_date IS NOT NULL AND ist.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY) THEN 3
+            WHEN s.quantity <= 0 THEN 1
+            WHEN s.quantity <= s.min_threshold THEN 2
+            WHEN s.expiry_date IS NOT NULL AND s.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY) THEN 3
             ELSE 4
         END,
-        ist.expiry_date ASC,
-        i.name ASC
+        s.expiry_date ASC,
+        p.name ASC
     `;
     
     params.push(parseInt(expiring_days));
     
     connection.query(sql, params, (err, results) => {
         if (err) {
-            console.error('Error fetching inventory report:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento report inventario' });
+            console.error('❌ Error fetching inventory report:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento report inventario',
+                details: err.message 
+            });
         }
         
         const inventoryData = results.map(item => ({
-            ...item,
-            ingredient_cost: parseFloat(item.ingredient_cost) || 0,
-            stock_quantity: parseFloat(item.stock_quantity) || 0,
-            available_quantity: parseFloat(item.available_quantity) || 0,
-            reserved_quantity: parseFloat(item.reserved_quantity) || 0,
+            stock_id: item.stock_id,
+            product_name: item.product_name,
+            variant_name: item.variant_name,
+            full_name: `${item.product_name}${item.variant_name !== item.product_name ? ` - ${item.variant_name}` : ''}`,
+            sku: item.variant_sku,
+            category: item.category_name || 'Nessuna categoria',
+            category_color: item.category_color || '#6B7280',
+            quantity: parseFloat(item.stock_quantity) || 0,
+            unit: item.unit || 'pz',
             min_threshold: parseFloat(item.min_threshold) || 0,
-            max_threshold: parseFloat(item.max_threshold) || null,
-            current_cost: parseFloat(item.current_cost) || 0,
+            max_threshold: item.max_threshold ? parseFloat(item.max_threshold) : null,
+            cost_per_unit: parseFloat(item.cost_per_unit) || 0,
             total_value: parseFloat(item.total_value) || 0,
-            days_to_expiry: item.days_to_expiry || null
+            supplier: item.supplier || 'Non specificato',
+            batch_number: item.batch_number,
+            expiry_date: item.expiry_date,
+            days_to_expiry: item.days_to_expiry,
+            last_restock_date: item.last_restock_date,
+            stock_status: item.stock_status,
+            notes: item.stock_notes
         }));
         
         // Calcola statistiche inventario
         const inventoryStats = calculateInventoryStats(inventoryData);
         
+        console.log(`✅ Inventory report calculated for ${inventoryData.length} items`);
         res.json({
+            success: true,
             status_filter: status,
-            supplier_filter: supplier_id || 'all',
+            supplier_filter: supplier_filter || 'all',
             expiring_days: parseInt(expiring_days),
             inventory: inventoryData,
             stats: inventoryStats
@@ -287,106 +380,120 @@ function getInventoryReport(req, res) {
     });
 }
 
-// GET analisi costi
+// GET analisi costi SEMPLIFICATA (senza tabelle purchase_orders)
 function getCostsAnalysis(req, res) {
     const { period = 'month' } = req.query;
     const { startDate, endDate } = calculateDateRange(period);
     
+    console.log('💰 Getting costs analysis:', { period });
+    
     // Query ricavi
     const revenueQuery = `
         SELECT 
-            'ricavi' as type,
-            SUM(total) as amount,
-            COUNT(*) as transactions_count,
-            AVG(total) as avg_transaction
+            COALESCE(SUM(total), 0) as total_revenue,
+            COUNT(*) as orders_count,
+            COALESCE(AVG(total), 0) as avg_order_value
         FROM orders 
-        WHERE status = 'completed' 
+        WHERE status IN ('servito', 'pagato')
             AND created_at BETWEEN ? AND ?
     `;
     
-    // Query costi acquisti
-    const costsQuery = `
+    // Query valore stock attuale (proxy per costi)
+    const stockValueQuery = `
         SELECT 
-            'costi_acquisti' as type,
-            SUM(total) as amount,
-            COUNT(*) as transactions_count,
-            AVG(total) as avg_transaction
-        FROM purchase_orders 
-        WHERE status IN ('delivered', 'invoiced', 'paid')
-            AND order_date BETWEEN ? AND ?
+            COALESCE(SUM(quantity * cost_per_unit), 0) as total_stock_value,
+            COUNT(*) as stock_items,
+            COALESCE(AVG(cost_per_unit), 0) as avg_cost_per_unit
+        FROM stock
+        WHERE quantity > 0
     `;
     
-    // Query dettaglio costi per categoria
-    const costsByCategoryQuery = `
+    // Query movimenti stock (uscite come proxy vendite)
+    const movementsQuery = `
         SELECT 
-            i.category,
-            SUM(poi.total_cost) as total_cost,
-            SUM(poi.quantity) as total_quantity,
-            COUNT(DISTINCT po.supplier_id) as suppliers_count
-        FROM purchase_order_items poi
-        JOIN purchase_orders po ON poi.purchase_order_id = po.id
-        JOIN ingredients i ON poi.ingredient_id = i.id
-        WHERE po.status IN ('delivered', 'invoiced', 'paid')
-            AND po.order_date BETWEEN ? AND ?
-        GROUP BY i.category
-        ORDER BY total_cost DESC
+            COALESCE(SUM(CASE WHEN type = 'out' THEN quantity * cost_per_unit END), 0) as estimated_costs,
+            COUNT(CASE WHEN type = 'out' THEN 1 END) as out_movements,
+            COUNT(CASE WHEN type = 'in' THEN 1 END) as in_movements
+        FROM stock_movements sm
+        LEFT JOIN stock s ON sm.product_variant_id = s.product_variant_id
+        WHERE sm.created_at BETWEEN ? AND ?
     `;
     
-    // Esegui tutte le query
-    connection.query(revenueQuery, [startDate, endDate], (err, revenueResults) => {
-        if (err) {
-            console.error('Error fetching revenue data:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento dati ricavi' });
-        }
-        
-        connection.query(costsQuery, [startDate, endDate], (err, costsResults) => {
-            if (err) {
-                console.error('Error fetching costs data:', err);
-                return res.status(500).json({ error: 'Errore nel caricamento dati costi' });
-            }
-            
-            connection.query(costsByCategoryQuery, [startDate, endDate], (err, categoryResults) => {
-                if (err) {
-                    console.error('Error fetching costs by category:', err);
-                    return res.status(500).json({ error: 'Errore nel caricamento costi per categoria' });
-                }
-                
-                const revenue = revenueResults[0] || { amount: 0, transactions_count: 0, avg_transaction: 0 };
-                const costs = costsResults[0] || { amount: 0, transactions_count: 0, avg_transaction: 0 };
-                
-                const analysis = {
-                    period: period,
-                    date_range: { start: startDate, end: endDate },
-                    revenue: {
-                        total: parseFloat(revenue.amount) || 0,
-                        transactions: parseInt(revenue.transactions_count) || 0,
-                        avg_transaction: parseFloat(revenue.avg_transaction) || 0
-                    },
-                    costs: {
-                        total: parseFloat(costs.amount) || 0,
-                        transactions: parseInt(costs.transactions_count) || 0,
-                        avg_transaction: parseFloat(costs.avg_transaction) || 0
-                    },
-                    profit: (parseFloat(revenue.amount) || 0) - (parseFloat(costs.amount) || 0),
-                    margin_percentage: revenue.amount > 0 
-                        ? ((parseFloat(revenue.amount) - parseFloat(costs.amount)) / parseFloat(revenue.amount)) * 100 
-                        : 0,
-                    costs_by_category: categoryResults.map(category => ({
-                        ...category,
-                        total_cost: parseFloat(category.total_cost) || 0,
-                        total_quantity: parseFloat(category.total_quantity) || 0,
-                        suppliers_count: parseInt(category.suppliers_count) || 0
-                    }))
-                };
-                
-                res.json(analysis);
+    Promise.all([
+        new Promise((resolve, reject) => {
+            connection.query(revenueQuery, [startDate, endDate], (err, results) => {
+                if (err) reject(err);
+                else resolve(results[0] || {});
             });
+        }),
+        new Promise((resolve, reject) => {
+            connection.query(stockValueQuery, (err, results) => {
+                if (err) reject(err);
+                else resolve(results[0] || {});
+            });
+        }),
+        new Promise((resolve, reject) => {
+            connection.query(movementsQuery, [startDate, endDate], (err, results) => {
+                if (err) reject(err);
+                else resolve(results[0] || {});
+            });
+        })
+    ]).then(([revenue, stockValue, movements]) => {
+        
+        const revenueAmount = parseFloat(revenue.total_revenue) || 0;
+        const estimatedCosts = parseFloat(movements.estimated_costs) || 0;
+        const profit = revenueAmount - estimatedCosts;
+        const marginPercentage = revenueAmount > 0 ? (profit / revenueAmount) * 100 : 0;
+        
+        const analysis = {
+            period: period,
+            date_range: { 
+                start: startDate.toISOString().split('T')[0], 
+                end: endDate.toISOString().split('T')[0] 
+            },
+            revenue: {
+                total: revenueAmount,
+                orders: parseInt(revenue.orders_count) || 0,
+                avg_order: parseFloat(revenue.avg_order_value) || 0
+            },
+            costs: {
+                estimated: estimatedCosts,
+                stock_value: parseFloat(stockValue.total_stock_value) || 0,
+                movements: {
+                    out: parseInt(movements.out_movements) || 0,
+                    in: parseInt(movements.in_movements) || 0
+                }
+            },
+            profit: {
+                amount: profit,
+                margin_percentage: Math.round(marginPercentage * 100) / 100
+            },
+            stock_info: {
+                total_items: parseInt(stockValue.stock_items) || 0,
+                avg_cost: parseFloat(stockValue.avg_cost_per_unit) || 0
+            }
+        };
+        
+        console.log('✅ Costs analysis calculated');
+        res.json({
+            success: true,
+            data: analysis
+        });
+        
+    }).catch(error => {
+        console.error('❌ Error in costs analysis:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Errore nell\'analisi costi',
+            details: error.message 
         });
     });
 }
 
-// GET statistiche rapide (per dashboard)
+// GET statistiche rapide (per dashboard) CORRETTE
 function getQuickStats(req, res) {
+    console.log('⚡ Getting quick stats for dashboard');
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -402,9 +509,8 @@ function getQuickStats(req, res) {
             COALESCE(SUM(total), 0) as revenue_today,
             COALESCE(AVG(total), 0) as avg_order_today
         FROM orders 
-        WHERE status = 'completed' 
-            AND created_at >= ?
-            AND created_at < ?
+        WHERE status IN ('servito', 'pagato')
+            AND created_at >= ? AND created_at < ?
     `;
     
     // Statistiche di ieri (per confronto)
@@ -413,79 +519,104 @@ function getQuickStats(req, res) {
             COUNT(*) as orders_yesterday,
             COALESCE(SUM(total), 0) as revenue_yesterday
         FROM orders 
-        WHERE status = 'completed' 
-            AND created_at >= ?
-            AND created_at < ?
+        WHERE status IN ('servito', 'pagato')
+            AND created_at >= ? AND created_at < ?
     `;
     
     // Prodotto top di oggi
     const topProductQuery = `
         SELECT 
             p.name as product_name,
+            pv.name as variant_name,
             SUM(oi.quantity) as quantity_sold
         FROM order_items oi
-        JOIN orders o ON oi.order_id = o.id
-        JOIN products p ON oi.product_id = p.id
-        WHERE o.status = 'completed'
-            AND o.created_at >= ?
-            AND o.created_at < ?
-        GROUP BY p.id, p.name
+        INNER JOIN orders o ON oi.order_id = o.id
+        INNER JOIN product_variants pv ON oi.product_variant_id = pv.id
+        INNER JOIN products p ON pv.product_id = p.id
+        WHERE o.status IN ('servito', 'pagato')
+            AND o.created_at >= ? AND o.created_at < ?
+        GROUP BY p.id, p.name, pv.name
         ORDER BY quantity_sold DESC
         LIMIT 1
     `;
     
-    connection.query(todayStatsQuery, [today, tomorrow], (err, todayResults) => {
-        if (err) {
-            console.error('Error fetching today stats:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento statistiche' });
-        }
-        
-        connection.query(yesterdayStatsQuery, [yesterday, today], (err, yesterdayResults) => {
-            if (err) {
-                console.error('Error fetching yesterday stats:', err);
-                return res.status(500).json({ error: 'Errore nel caricamento statistiche' });
-            }
-            
-            connection.query(topProductQuery, [today, tomorrow], (err, productResults) => {
+    Promise.all([
+        new Promise((resolve) => {
+            connection.query(todayStatsQuery, [today, tomorrow], (err, results) => {
                 if (err) {
-                    console.error('Error fetching top product:', err);
-                    return res.status(500).json({ error: 'Errore nel caricamento prodotto top' });
+                    console.error('❌ Error in today stats:', err);
+                    resolve({ orders_today: 0, revenue_today: 0, avg_order_today: 0 });
+                } else {
+                    resolve(results[0] || {});
                 }
-                
-                const todayStats = todayResults[0] || { orders_today: 0, revenue_today: 0, avg_order_today: 0 };
-                const yesterdayStats = yesterdayResults[0] || { orders_yesterday: 0, revenue_yesterday: 0 };
-                const topProduct = productResults[0] || { product_name: 'N/A', quantity_sold: 0 };
-                
-                // Calcola variazioni percentuali
-                const revenueChange = yesterdayStats.revenue_yesterday > 0 
-                    ? ((todayStats.revenue_today - yesterdayStats.revenue_yesterday) / yesterdayStats.revenue_yesterday) * 100 
-                    : 0;
-                
-                const ordersChange = yesterdayStats.orders_yesterday > 0 
-                    ? ((todayStats.orders_today - yesterdayStats.orders_yesterday) / yesterdayStats.orders_yesterday) * 100 
-                    : 0;
-                
-                res.json({
-                    revenue_today: parseFloat(todayStats.revenue_today) || 0,
-                    revenue_change: Math.round(revenueChange * 100) / 100,
-                    orders_today: parseInt(todayStats.orders_today) || 0,
-                    orders_change: Math.round(ordersChange * 100) / 100,
-                    avg_order_value: parseFloat(todayStats.avg_order_today) || 0,
-                    top_product: {
-                        name: topProduct.product_name,
-                        quantity: parseInt(topProduct.quantity_sold) || 0
-                    },
-                    margin_percentage: 68 // Placeholder - da calcolare con costi reali
-                });
             });
+        }),
+        new Promise((resolve) => {
+            connection.query(yesterdayStatsQuery, [yesterday, today], (err, results) => {
+                if (err) {
+                    console.error('❌ Error in yesterday stats:', err);
+                    resolve({ orders_yesterday: 0, revenue_yesterday: 0 });
+                } else {
+                    resolve(results[0] || {});
+                }
+            });
+        }),
+        new Promise((resolve) => {
+            connection.query(topProductQuery, [today, tomorrow], (err, results) => {
+                if (err) {
+                    console.error('❌ Error in top product:', err);
+                    resolve({ product_name: 'N/A', variant_name: '', quantity_sold: 0 });
+                } else {
+                    resolve(results[0] || { product_name: 'N/A', variant_name: '', quantity_sold: 0 });
+                }
+            });
+        })
+    ]).then(([todayStats, yesterdayStats, topProduct]) => {
+        
+        // Calcola variazioni percentuali
+        const revenueChange = yesterdayStats.revenue_yesterday > 0 
+            ? ((todayStats.revenue_today - yesterdayStats.revenue_yesterday) / yesterdayStats.revenue_yesterday) * 100 
+            : 0;
+        
+        const ordersChange = yesterdayStats.orders_yesterday > 0 
+            ? ((todayStats.orders_today - yesterdayStats.orders_yesterday) / yesterdayStats.orders_yesterday) * 100 
+            : 0;
+        
+        const topProductName = topProduct.variant_name !== topProduct.product_name && topProduct.variant_name 
+            ? `${topProduct.product_name} - ${topProduct.variant_name}`
+            : topProduct.product_name;
+        
+        console.log('✅ Quick stats calculated');
+        res.json({
+            success: true,
+            data: {
+                revenue_today: parseFloat(todayStats.revenue_today) || 0,
+                revenue_change: Math.round(revenueChange * 100) / 100,
+                orders_today: parseInt(todayStats.orders_today) || 0,
+                orders_change: Math.round(ordersChange * 100) / 100,
+                avg_order_value: parseFloat(todayStats.avg_order_today) || 0,
+                top_product: {
+                    name: topProductName,
+                    quantity: parseInt(topProduct.quantity_sold) || 0
+                }
+            },
+            timestamp: new Date().toISOString()
+        });
+        
+    }).catch(error => {
+        console.error('❌ Error fetching quick stats:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Errore nel caricamento statistiche rapide',
+            details: error.message
         });
     });
 }
 
-// Funzioni helper
-function calculateSalesSummary(salesData, startDate, endDate) {
-    const totalRevenue = salesData.reduce((sum, day) => sum + day.total_revenue, 0);
-    const totalOrders = salesData.reduce((sum, day) => sum + day.orders_count, 0);
+// Funzioni helper CORRETTE
+function calculateSalesSummary(salesData) {
+    const totalRevenue = salesData.reduce((sum, day) => sum + (day.total_revenue || 0), 0);
+    const totalOrders = salesData.reduce((sum, day) => sum + (day.orders_count || 0), 0);
     const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
     
     return {
@@ -517,7 +648,8 @@ function calculateInventoryStats(inventoryData) {
             ok
         },
         total_inventory_value: Math.round(totalValue * 100) / 100,
-        alerts: esaurito + critico + scadenzaVicina
+        alerts: esaurito + critico + scadenzaVicina,
+        categories: [...new Set(inventoryData.map(i => i.category))].length
     };
 }
 
