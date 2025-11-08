@@ -25,7 +25,11 @@ export default function StockMovementsSection() {
     fetchMovements();
     fetchProducts();
     fetchStats();
-  }, [filters]);
+  }, []);
+
+  useEffect(() => {
+    filterMovements();
+  }, [movements, filters]);
 
   const fetchMovements = async () => {
     try {
@@ -39,21 +43,26 @@ export default function StockMovementsSection() {
         }
       });
       
+      console.log('🔄 Fetching movements with params:', params.toString());
+      
       const response = await fetch(`http://localhost:3000/api/stock-movements?${params}`, {
         credentials: 'include'
       });
       
       if (!response.ok) {
-        throw new Error(`Errore HTTP: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Errore HTTP: ${response.status}`);
       }
       
       const data = await response.json();
+      console.log('✅ Movements loaded:', data);
+      
       setMovements(data.movements || []);
-      setFilteredMovements(data.movements || []);
       
     } catch (err) {
       console.error('❌ Error fetching movements:', err);
       setError(err.message);
+      setMovements([]);
     } finally {
       setLoading(false);
     }
@@ -61,12 +70,14 @@ export default function StockMovementsSection() {
 
   const fetchProducts = async () => {
     try {
+      console.log('🔄 Fetching products for movements...');
       const response = await fetch('http://localhost:3000/api/stock-movements/products', {
         credentials: 'include'
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Products loaded:', data);
         setProducts(data.products || []);
       }
     } catch (err) {
@@ -77,22 +88,43 @@ export default function StockMovementsSection() {
   const fetchStats = async () => {
     try {
       const params = new URLSearchParams();
-      if (filters.date_from) params.append('date_from', filters.date_from);
-      if (filters.date_to) params.append('date_to', filters.date_to);
-      if (filters.type !== 'all') params.append('type', filters.type);
-      if (filters.reference_type !== 'all') params.append('reference_type', filters.reference_type);
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && value !== 'all' && key !== 'search') {
+          params.append(key, value);
+        }
+      });
       
+      console.log('📊 Fetching stats...');
       const response = await fetch(`http://localhost:3000/api/stock-movements/stats?${params}`, {
         credentials: 'include'
       });
       
       if (response.ok) {
         const data = await response.json();
-        setStats(data);
+        console.log('✅ Stats loaded:', data);
+        setStats(data || {});
       }
     } catch (err) {
       console.error('❌ Error fetching stats:', err);
+      setStats({});
     }
+  };
+
+  const filterMovements = () => {
+    let filtered = [...movements];
+
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      filtered = filtered.filter(movement =>
+        movement.product_name?.toLowerCase().includes(searchLower) ||
+        movement.variant_name?.toLowerCase().includes(searchLower) ||
+        movement.reason?.toLowerCase().includes(searchLower) ||
+        movement.notes?.toLowerCase().includes(searchLower) ||
+        movement.user_name?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    setFilteredMovements(filtered);
   };
 
   const handleDeleteMovement = async (id, productName) => {
@@ -202,7 +234,22 @@ export default function StockMovementsSection() {
       <div className="stock-movements-section">
         <div className="loading-spinner">
           <div className="spinner"></div>
-          <p>Caricamento movimenti stock...</p>
+          <p>Caricamento movimenti...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="stock-movements-section">
+        <div className="error-state">
+          <span className="error-icon">⚠️</span>
+          <h3>Errore nel caricamento</h3>
+          <p>{error}</p>
+          <button className="btn primary" onClick={fetchMovements}>
+            🔄 Riprova
+          </button>
         </div>
       </div>
     );
@@ -210,13 +257,14 @@ export default function StockMovementsSection() {
 
   return (
     <div className="stock-movements-section">
-      {/* Header */}
+      {/* Header con statistiche */}
       <div className="section-header">
         <div className="header-left">
-          <h2>📊 Movimenti Stock</h2>
+          <h2>📈 Movimenti Stock</h2>
           <p className="section-subtitle">
-            {stats.total_movements || 0} movimenti totali • {stats.today || 0} oggi • 
-            {stats.affected_products || 0} prodotti interessati
+            {stats.total_movements || 0} movimenti totali • 
+            {stats.inbound_movements || 0} entrate • 
+            {stats.outbound_movements || 0} uscite
           </p>
         </div>
         <div className="header-actions">
@@ -240,40 +288,33 @@ export default function StockMovementsSection() {
       </div>
 
       {/* Statistiche rapide */}
-      <div className="movement-stats">
+      <div className="movements-stats">
         <div className="stat-card mini success">
-          <span className="stat-icon">📥</span>
+          <span className="stat-icon">⬆️</span>
           <div>
-            <div className="stat-number">{stats.entries || 0}</div>
+            <div className="stat-number">{stats.inbound_movements || 0}</div>
             <div className="stat-label">Entrate</div>
           </div>
         </div>
         <div className="stat-card mini warning">
-          <span className="stat-icon">📤</span>
+          <span className="stat-icon">⬇️</span>
           <div>
-            <div className="stat-number">{stats.exits || 0}</div>
+            <div className="stat-number">{stats.outbound_movements || 0}</div>
             <div className="stat-label">Uscite</div>
           </div>
         </div>
         <div className="stat-card mini info">
           <span className="stat-icon">⚖️</span>
           <div>
-            <div className="stat-number">{stats.adjustments || 0}</div>
+            <div className="stat-number">{stats.adjustment_movements || 0}</div>
             <div className="stat-label">Rettifiche</div>
           </div>
         </div>
         <div className="stat-card mini secondary">
-          <span className="stat-icon">💰</span>
+          <span className="stat-icon">📋</span>
           <div>
-            <div className="stat-number">{formatCurrency(stats.total_value_in)}</div>
-            <div className="stat-label">Valore Entrate</div>
-          </div>
-        </div>
-        <div className="stat-card mini secondary">
-          <span className="stat-icon">📉</span>
-          <div>
-            <div className="stat-number">{formatCurrency(stats.total_value_out)}</div>
-            <div className="stat-label">Valore Uscite</div>
+            <div className="stat-number">{stats.manual_movements || 0}</div>
+            <div className="stat-label">Manuali</div>
           </div>
         </div>
       </div>
@@ -283,34 +324,34 @@ export default function StockMovementsSection() {
         <div className="search-container">
           <input
             type="text"
-            placeholder="Cerca per prodotto, variante, motivo..."
+            placeholder="Cerca per prodotto, motivo, note..."
             className="search-input"
             value={filters.search}
             onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
           />
           <span className="search-icon">🔍</span>
         </div>
-
-        <select
+        
+        <select 
+          className="filter-select"
           value={filters.type}
           onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value }))}
-          className="filter-select"
         >
           <option value="all">Tutti i tipi</option>
-          <option value="in">📥 Entrate</option>
-          <option value="out">📤 Uscite</option>
+          <option value="in">⬆️ Entrate</option>
+          <option value="out">⬇️ Uscite</option>
           <option value="adjustment">⚖️ Rettifiche</option>
         </select>
 
-        <select
+        <select 
+          className="filter-select"
           value={filters.reference_type}
           onChange={(e) => setFilters(prev => ({ ...prev, reference_type: e.target.value }))}
-          className="filter-select"
         >
           <option value="all">Tutti i riferimenti</option>
-          <option value="manual">✋ Manuale</option>
-          <option value="order">🛒 Ordine</option>
-          <option value="supplier">📦 Fornitore</option>
+          <option value="order">📋 Ordini</option>
+          <option value="manual">✋ Manuali</option>
+          <option value="supplier">🚚 Fornitori</option>
         </select>
 
         <select
@@ -359,28 +400,19 @@ export default function StockMovementsSection() {
         )}
       </div>
 
-      {/* Errori */}
-      {error && (
-        <div className="error-banner">
-          <span className="error-icon">⚠️</span>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="error-close">×</button>
-        </div>
-      )}
-
       {/* Tabella movimenti */}
       {filteredMovements.length === 0 ? (
         <div className="empty-state">
-          <span className="empty-icon">📊</span>
+          <span className="empty-icon">📈</span>
           <h3>Nessun movimento trovato</h3>
           <p>
             {movements.length === 0 
-              ? "Inizia registrando il primo movimento di stock"
-              : "Prova a modificare i filtri di ricerca"
+              ? "Non ci sono movimenti registrati"
+              : "Nessun movimento corrisponde ai filtri selezionati"
             }
           </p>
           <button 
-            className="btn primary"
+            className="btn primary" 
             onClick={() => setShowAddModal(true)}
           >
             + Primo Movimento
@@ -391,13 +423,13 @@ export default function StockMovementsSection() {
           <table className="table">
             <thead>
               <tr>
-                <th>Tipo</th>
+                <th>Data/Ora</th>
                 <th>Prodotto</th>
+                <th>Tipo</th>
                 <th>Quantità</th>
-                <th>Costo</th>
-                <th>Motivo</th>
+                <th>Costo/Valore</th>
                 <th>Riferimento</th>
-                <th>Data</th>
+                <th>Motivo</th>
                 <th>Utente</th>
                 <th>Azioni</th>
               </tr>
@@ -406,48 +438,51 @@ export default function StockMovementsSection() {
               {filteredMovements.map(movement => (
                 <tr key={movement.id} className={`movement-row ${movement.type}`}>
                   <td>
-                    <span className={`type-badge ${getTypeColor(movement.type)}`}>
-                      {getTypeIcon(movement.type)} {getTypeLabel(movement.type)}
-                    </span>
+                    <div className="movement-date">
+                      <span className="date">{formatDate(movement.created_at)}</span>
+                      <span className="time-ago">{getTimeAgo(movement.created_at)}</span>
+                    </div>
                   </td>
                   <td>
                     <div className="product-info">
                       <div className="product-name">{movement.product_name}</div>
                       <div className="variant-name">{movement.variant_name}</div>
-                      <div className="category-name">{movement.category_name}</div>
                     </div>
                   </td>
                   <td>
-                    <span className={`quantity ${parseFloat(movement.quantity) >= 0 ? 'positive' : 'negative'}`}>
-                      {movement.type === 'out' ? '-' : '+'}{Math.abs(movement.quantity)}
+                    <span className={`movement-type ${movement.type}`}>
+                      {getTypeIcon(movement.type)} {getTypeLabel(movement.type)}
                     </span>
                   </td>
                   <td>
-                    <div className="cost-info">
-                      <div className="unit-cost">
-                        {movement.cost_per_unit ? formatCurrency(movement.cost_per_unit) : '-'}
-                      </div>
-                      <div className="total-cost">
-                        {formatCurrency(movement.total_cost)}
-                      </div>
-                    </div>
+                    <span className={`movement-quantity ${movement.type}`}>
+                      {movement.type === 'out' ? '-' : '+'}
+                      {movement.quantity}
+                    </span>
                   </td>
                   <td>
-                    <span className="reason">{movement.reason || '-'}</span>
-                  </td>
-                  <td>
-                    <div className="reference-info">
-                      <span className={`reference-badge ${movement.reference_type}`}>
-                        {getReferenceIcon(movement.reference_type)} {getReferenceLabel(movement.reference_type)}
-                      </span>
-                      {movement.reference_id && (
-                        <div className="reference-id">#{movement.reference_id}</div>
+                    <div className="movement-cost">
+                      {movement.cost_per_unit > 0 && (
+                        <div className="cost-per-unit">
+                          {formatCurrency(movement.cost_per_unit)}/u
+                        </div>
+                      )}
+                      {movement.total_cost > 0 && (
+                        <div className="total-cost">
+                          Tot: {formatCurrency(movement.total_cost)}
+                        </div>
                       )}
                     </div>
                   </td>
                   <td>
-                    <div className="date-info">
-                      <div className="date">{getTimeAgo(movement.created_at)}</div>
+                    <span className={`reference-type ${movement.reference_type}`}>
+                      {getReferenceIcon(movement.reference_type)} {getReferenceLabel(movement.reference_type)}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="movement-reason">
+                      {movement.reason && <div className="reason">{movement.reason}</div>}
+                      {movement.notes && <div className="notes">{movement.notes}</div>}
                     </div>
                   </td>
                   <td>
@@ -464,7 +499,7 @@ export default function StockMovementsSection() {
                       </button>
                       <button 
                         className="btn-small danger"
-                        onClick={() => handleDeleteMovement(movement.id, movement.product_name)}
+                        onClick={() => handleDeleteMovement(movement.id, `${movement.product_name} - ${movement.variant_name}`)}
                         title="Elimina movimento"
                       >
                         🗑️
@@ -478,7 +513,7 @@ export default function StockMovementsSection() {
         </div>
       )}
 
-      {/* Modal Nuovo Movimento */}
+      {/* Modal nuovo movimento */}
       {showAddModal && (
         <MovementModal
           onClose={() => setShowAddModal(false)}
@@ -491,7 +526,7 @@ export default function StockMovementsSection() {
         />
       )}
 
-      {/* Modal Modifica Movimento */}
+      {/* Modal modifica movimento */}
       {editingMovement && (
         <EditMovementModal
           movement={editingMovement}

@@ -9,23 +9,32 @@ export default function ProductsSection() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' o 'table'
   const [error, setError] = useState(null);
+  
+  const [filters, setFilters] = useState({
+    search: '',
+    category_id: 'all',
+    active: 'all',
+    featured: 'all'
+  });
+  
+  const [viewMode, setViewMode] = useState('grid');
+  const [stats, setStats] = useState({});
 
   useEffect(() => {
     loadData();
+    loadStats();
   }, []);
 
   useEffect(() => {
     filterProducts();
-  }, [products, searchTerm, categoryFilter, statusFilter]);
+  }, [products, filters]);
 
   const loadData = async () => {
     try {
       setError(null);
+      setLoading(true);
+      
       const responses = await Promise.all([
         fetch('http://localhost:3000/api/products', { credentials: 'include' }),
         fetch('http://localhost:3000/api/categories', { credentials: 'include' }),
@@ -54,110 +63,138 @@ export default function ProductsSection() {
     }
   };
 
+  const loadStats = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/api/products/stats', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const statsData = await response.json();
+        setStats(statsData);
+      }
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  };
+
   const filterProducts = () => {
-    let filtered = products;
+    let filtered = [...products];
 
-    // Filtro per testo (nome o descrizione)
-    if (searchTerm) {
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter(product =>
-        product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.description?.toLowerCase().includes(searchTerm.toLowerCase())
+        product.name?.toLowerCase().includes(searchLower) ||
+        product.description?.toLowerCase().includes(searchLower)
       );
     }
 
-    // Filtro per categoria
-    if (categoryFilter) {
+    if (filters.category_id !== 'all') {
       filtered = filtered.filter(product => 
-        product.category_id === parseInt(categoryFilter)
+        product.category_id == filters.category_id
       );
     }
 
-    // Filtro per stato
-    if (statusFilter) {
-      const isAvailable = statusFilter === 'available';
-      filtered = filtered.filter(product => product.available === isAvailable);
+    if (filters.active !== 'all') {
+      filtered = filtered.filter(product => 
+        filters.active === 'true' ? product.active === 1 : product.active === 0
+      );
+    }
+
+    if (filters.featured !== 'all') {
+      filtered = filtered.filter(product => 
+        filters.featured === 'true' ? product.featured === 1 : product.featured === 0
+      );
     }
 
     setFilteredProducts(filtered);
   };
 
-  const deleteProduct = async (id, productName) => {
-    if (!window.confirm(`Sei sicuro di voler eliminare "${productName}"?`)) {
-      return;
-    }
+  const handleDeleteProduct = async (id, productName, hasDependencies = false) => {
+    const message = hasDependencies 
+      ? `Eliminare "${productName}"?\n\nATTENZIONE: Questo prodotto ha varianti/ordini/stock. L'eliminazione sarà forzata.`
+      : `Eliminare "${productName}"?`;
+      
+    if (!confirm(message)) return;
 
     try {
       const response = await fetch(`http://localhost:3000/api/products/${id}`, {
         method: 'DELETE',
-        credentials: 'include'
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ force: hasDependencies })
       });
 
-      if (response.ok) {
-        setProducts(products.filter(product => product.id !== id));
-        alert('Prodotto eliminato con successo');
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        alert(errorData.message || 'Errore nell\'eliminazione');
+        if (response.status === 409) {
+          const forceDelete = confirm(
+            `Impossibile eliminare "${productName}" perché utilizzato.\n\n` +
+            `Varianti: ${errorData.dependencies.variants_count}\n` +
+            `Ordini: ${errorData.dependencies.order_items_count}\n` +
+            `Stock: ${errorData.dependencies.stock_records}\n\n` +
+            `Forzare l'eliminazione?`
+          );
+          
+          if (forceDelete) {
+            return handleDeleteProduct(id, productName, true);
+          }
+          return;
+        }
+        throw new Error(errorData.error || 'Errore nell\'eliminazione');
       }
-    } catch (error) {
-      console.error('Error deleting product:', error);
-      alert('Errore di rete');
+
+      await loadData();
+      await loadStats();
+      console.log(`✅ Deleted product: ${id}`);
+    } catch (err) {
+      console.error('❌ Error deleting product:', err);
+      alert(`Errore: ${err.message}`);
     }
   };
 
-  const toggleProductAvailability = async (id, currentStatus) => {
+  const handleToggleField = async (id, field, currentValue) => {
     try {
       const response = await fetch(`http://localhost:3000/api/products/${id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ available: !currentStatus })
+        body: JSON.stringify({ 
+          field, 
+          value: !currentValue 
+        })
       });
 
-      if (response.ok) {
-        setProducts(products.map(product => 
-          product.id === id ? { ...product, available: !currentStatus } : product
-        ));
-        alert(`Prodotto ${!currentStatus ? 'disponibile' : 'non disponibile'}`);
-      } else {
-        alert('Errore nell\'aggiornamento dello stato');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Errore nell'aggiornamento ${field}`);
       }
-    } catch (error) {
-      console.error('Error updating product availability:', error);
-      alert('Errore di rete');
+
+      setProducts(products.map(product => 
+        product.id === id ? { ...product, [field]: !currentValue ? 1 : 0 } : product
+      ));
+      
+      await loadStats();
+    } catch (err) {
+      console.error(`❌ Error toggling ${field}:`, err);
+      alert(`Errore: ${err.message}`);
     }
   };
 
-  const getCategoryName = (categoryId) => {
-    const category = categories.find(cat => cat.id === categoryId);
-    return category ? category.name : 'Senza categoria';
-  };
-
-  const getCategoryIcon = (categoryId) => {
-    const category = categories.find(cat => cat.id === categoryId);
-    return category?.icon || '🍽️';
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('it-IT', {
+      style: 'currency',
+      currency: 'EUR'
+    }).format(amount);
   };
 
   if (loading) {
     return (
-      <div className="loading-spinner">
-        <div className="spinner"></div>
-        <p>Caricamento prodotti...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="error-state">
-        <span className="error-icon">⚠️</span>
-        <h3>Errore nel caricamento</h3>
-        <p>{error}</p>
-        <button className="btn primary" onClick={loadData}>
-          Riprova
-        </button>
+      <div className="products-section">
+        <div className="loading-spinner">
+          <div className="spinner"></div>
+          <p>Caricamento prodotti...</p>
+        </div>
       </div>
     );
   }
@@ -166,10 +203,11 @@ export default function ProductsSection() {
     <div className="products-section">
       {/* Header */}
       <div className="section-header">
-        <div>
+        <div className="header-left">
           <h2>🍺 Gestione Prodotti</h2>
           <p className="section-subtitle">
-            {products.length} prodotti totali • {products.filter(p => p.available).length} disponibili
+            {stats.total_products || 0} prodotti • {stats.active_products || 0} attivi • 
+            {stats.featured_products || 0} in evidenza
           </p>
         </div>
         <div className="header-actions">
@@ -190,46 +228,59 @@ export default function ProductsSection() {
             </button>
           </div>
           <button 
+            className="btn secondary refresh-btn"
+            onClick={() => {
+              loadData();
+              loadStats();
+            }}
+            title="Aggiorna prodotti"
+          >
+            🔄 Aggiorna
+          </button>
+          <button 
             className="btn primary" 
             onClick={() => setShowAddModal(true)}
           >
-            + Aggiungi Prodotto
+            + Nuovo Prodotto
           </button>
         </div>
       </div>
 
       {/* Statistiche rapide */}
       <div className="products-stats">
-        <div className="stat-card mini">
+        <div className="stat-card mini success">
           <span className="stat-icon">🍺</span>
           <div>
-            <div className="stat-number">{products.length}</div>
-            <div className="stat-label">Prodotti Totali</div>
+            <div className="stat-number">{stats.total_products || 0}</div>
+            <div className="stat-label">Totali</div>
           </div>
         </div>
-        <div className="stat-card mini">
+        <div className="stat-card mini info">
           <span className="stat-icon">✅</span>
           <div>
-            <div className="stat-number">
-              {products.filter(p => p.available).length}
-            </div>
-            <div className="stat-label">Disponibili</div>
+            <div className="stat-number">{stats.active_products || 0}</div>
+            <div className="stat-label">Attivi</div>
           </div>
         </div>
-        <div className="stat-card mini">
-          <span className="stat-icon">📁</span>
+        <div className="stat-card mini warning">
+          <span className="stat-icon">⭐</span>
           <div>
-            <div className="stat-number">{categories.length}</div>
-            <div className="stat-label">Categorie</div>
+            <div className="stat-number">{stats.featured_products || 0}</div>
+            <div className="stat-label">In Evidenza</div>
           </div>
         </div>
-        <div className="stat-card mini">
+        <div className="stat-card mini secondary">
           <span className="stat-icon">💰</span>
           <div>
-            <div className="stat-number">
-              €{products.reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0).toFixed(0)}
-            </div>
-            <div className="stat-label">Valore Totale</div>
+            <div className="stat-number">{formatCurrency(stats.avg_price || 0)}</div>
+            <div className="stat-label">Prezzo Medio</div>
+          </div>
+        </div>
+        <div className="stat-card mini secondary">
+          <span className="stat-icon">📁</span>
+          <div>
+            <div className="stat-number">{stats.categories_count || 0}</div>
+            <div className="stat-label">Categorie</div>
           </div>
         </div>
       </div>
@@ -239,20 +290,20 @@ export default function ProductsSection() {
         <div className="search-container">
           <input
             type="text"
-            placeholder="Cerca prodotti..."
+            placeholder="Cerca prodotti per nome o descrizione..."
             className="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={filters.search}
+            onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
           />
           <span className="search-icon">🔍</span>
         </div>
         
         <select 
           className="filter-select"
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
+          value={filters.category_id}
+          onChange={(e) => setFilters(prev => ({ ...prev, category_id: e.target.value }))}
         >
-          <option value="">Tutte le categorie</option>
+          <option value="all">Tutte le categorie</option>
           {categories.map(category => (
             <option key={category.id} value={category.id}>
               {category.icon} {category.name}
@@ -262,27 +313,47 @@ export default function ProductsSection() {
 
         <select 
           className="filter-select"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          value={filters.active}
+          onChange={(e) => setFilters(prev => ({ ...prev, active: e.target.value }))}
         >
-          <option value="">Tutti gli stati</option>
-          <option value="available">Disponibili</option>
-          <option value="unavailable">Non disponibili</option>
+          <option value="all">Tutti gli stati</option>
+          <option value="true">✅ Solo attivi</option>
+          <option value="false">❌ Solo disattivi</option>
         </select>
 
-        {(searchTerm || categoryFilter || statusFilter) && (
+        <select 
+          className="filter-select"
+          value={filters.featured}
+          onChange={(e) => setFilters(prev => ({ ...prev, featured: e.target.value }))}
+        >
+          <option value="all">Tutti i prodotti</option>
+          <option value="true">⭐ Solo in evidenza</option>
+          <option value="false">🔍 Solo normali</option>
+        </select>
+
+        {Object.values(filters).some(v => v && v !== 'all') && (
           <button 
             className="btn secondary clear-filters"
-            onClick={() => {
-              setSearchTerm("");
-              setCategoryFilter("");
-              setStatusFilter("");
-            }}
+            onClick={() => setFilters({
+              search: '',
+              category_id: 'all',
+              active: 'all',
+              featured: 'all'
+            })}
           >
             Pulisci Filtri
           </button>
         )}
       </div>
+
+      {/* Errori */}
+      {error && (
+        <div className="error-banner">
+          <span className="error-icon">⚠️</span>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="error-close">×</button>
+        </div>
+      )}
 
       {/* Contenuto principale */}
       {filteredProducts.length === 0 ? (
@@ -300,7 +371,7 @@ export default function ProductsSection() {
               className="btn primary"
               onClick={() => setShowAddModal(true)}
             >
-              Aggiungi Primo Prodotto
+              + Primo Prodotto
             </button>
           )}
         </div>
@@ -309,16 +380,16 @@ export default function ProductsSection() {
           products={filteredProducts}
           categories={categories}
           onEdit={setEditingProduct}
-          onDelete={deleteProduct}
-          onToggleAvailability={toggleProductAvailability}
+          onDelete={handleDeleteProduct}
+          onToggleField={handleToggleField}
         />
       ) : (
         <ProductsTable 
           products={filteredProducts}
           categories={categories}
           onEdit={setEditingProduct}
-          onDelete={deleteProduct}
-          onToggleAvailability={toggleProductAvailability}
+          onDelete={handleDeleteProduct}
+          onToggleField={handleToggleField}
         />
       )}
 
@@ -333,13 +404,8 @@ export default function ProductsSection() {
             setEditingProduct(null);
           }}
           onSave={(savedProduct) => {
-            if (editingProduct) {
-              setProducts(products.map(p => 
-                p.id === savedProduct.id ? savedProduct : p
-              ));
-            } else {
-              setProducts([...products, savedProduct]);
-            }
+            loadData();
+            loadStats();
             setShowAddModal(false);
             setEditingProduct(null);
           }}
@@ -350,7 +416,7 @@ export default function ProductsSection() {
 }
 
 // Componente Vista Griglia
-function ProductsGrid({ products, categories, onEdit, onDelete, onToggleAvailability }) {
+function ProductsGrid({ products, categories, onEdit, onDelete, onToggleField }) {
   const getCategoryName = (categoryId) => {
     const category = categories.find(cat => cat.id === categoryId);
     return category ? category.name : 'Senza categoria';
@@ -371,7 +437,7 @@ function ProductsGrid({ products, categories, onEdit, onDelete, onToggleAvailabi
           categoryIcon={getCategoryIcon(product.category_id)}
           onEdit={() => onEdit(product)}
           onDelete={() => onDelete(product.id, product.name)}
-          onToggleAvailability={() => onToggleAvailability(product.id, product.available)}
+          onToggleField={onToggleField}
         />
       ))}
     </div>
@@ -379,7 +445,7 @@ function ProductsGrid({ products, categories, onEdit, onDelete, onToggleAvailabi
 }
 
 // Componente Vista Tabella
-function ProductsTable({ products, categories, onEdit, onDelete, onToggleAvailability }) {
+function ProductsTable({ products, categories, onEdit, onDelete, onToggleField }) {
   const getCategoryName = (categoryId) => {
     const category = categories.find(cat => cat.id === categoryId);
     return category ? category.name : 'Senza categoria';
@@ -390,29 +456,44 @@ function ProductsTable({ products, categories, onEdit, onDelete, onToggleAvailab
     return category?.icon || '🍽️';
   };
 
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('it-IT', {
+      style: 'currency',
+      currency: 'EUR'
+    }).format(amount);
+  };
+
   return (
     <div className="table-container">
       <table className="table">
         <thead>
           <tr>
+            <th>Ordine</th>
             <th>Prodotto</th>
             <th>Categoria</th>
-            <th>Prezzo</th>
+            <th>Prezzo Base</th>
+            <th>Tempo Prep.</th>
+            <th>Calorie</th>
+            <th>Varianti</th>
             <th>Stato</th>
+            <th>Evidenza</th>
             <th>Allergeni</th>
             <th>Azioni</th>
           </tr>
         </thead>
         <tbody>
           {products.map(product => (
-            <tr key={product.id}>
+            <tr key={product.id} className={`product-row ${product.active ? 'active' : 'inactive'} ${product.featured ? 'featured' : ''}`}>
+              <td>
+                <span className="sort-order">{product.sort_order}</span>
+              </td>
               <td>
                 <div className="product-info">
-                  <div className="product-image">
-                    {product.image ? (
-                      <img src={product.image} alt={product.name} />
+                  <div className="product-image-small">
+                    {product.image_url ? (
+                      <img src={product.image_url} alt={product.name} />
                     ) : (
-                      <span className="product-placeholder">🍽️</span>
+                      <span className="product-placeholder">{getCategoryIcon(product.category_id)}</span>
                     )}
                   </div>
                   <div>
@@ -428,14 +509,36 @@ function ProductsTable({ products, categories, onEdit, onDelete, onToggleAvailab
                   {getCategoryIcon(product.category_id)} {getCategoryName(product.category_id)}
                 </span>
               </td>
-              <td className="product-price">€{parseFloat(product.price || 0).toFixed(2)}</td>
+              <td className="product-price">{formatCurrency(product.base_price)}</td>
+              <td>
+                <span className="prep-time">
+                  {product.preparation_time ? `${product.preparation_time} min` : '-'}
+                </span>
+              </td>
+              <td>
+                <span className="calories">
+                  {product.calories ? `${product.calories} kcal` : '-'}
+                </span>
+              </td>
+              <td>
+                <span className="variants-count">{product.variants_count || 0}</span>
+              </td>
               <td>
                 <button
-                  className={`availability-toggle ${product.available ? 'available' : 'unavailable'}`}
-                  onClick={() => onToggleAvailability(product.id, product.available)}
+                  className={`status-toggle ${product.active ? 'active' : 'inactive'}`}
+                  onClick={() => onToggleField(product.id, 'active', product.active)}
                 >
-                  <span className="availability-dot"></span>
-                  {product.available ? 'Disponibile' : 'Non disponibile'}
+                  <span className="status-dot"></span>
+                  {product.active ? 'Attivo' : 'Disattivo'}
+                </button>
+              </td>
+              <td>
+                <button
+                  className={`featured-toggle ${product.featured ? 'featured' : 'normal'}`}
+                  onClick={() => onToggleField(product.id, 'featured', product.featured)}
+                  title={product.featured ? 'Rimuovi da evidenza' : 'Metti in evidenza'}
+                >
+                  {product.featured ? '⭐' : '☆'}
                 </button>
               </td>
               <td>
@@ -454,18 +557,11 @@ function ProductsTable({ products, categories, onEdit, onDelete, onToggleAvailab
               <td>
                 <div className="action-buttons">
                   <button 
-                    className="btn-small primary"
+                    className="btn-small secondary"
                     onClick={() => onEdit(product)}
                     title="Modifica prodotto"
                   >
                     ✏️
-                  </button>
-                  <button 
-                    className="btn-small secondary"
-                    onClick={() => alert('Visualizza dettagli - da implementare')}
-                    title="Visualizza dettagli"
-                  >
-                    👁️
                   </button>
                   <button 
                     className="btn-small danger"
@@ -485,32 +581,50 @@ function ProductsTable({ products, categories, onEdit, onDelete, onToggleAvailab
 }
 
 // Componente Card Prodotto
-function ProductCard({ product, categoryName, categoryIcon, onEdit, onDelete, onToggleAvailability }) {
+function ProductCard({ product, categoryName, categoryIcon, onEdit, onDelete, onToggleField }) {
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('it-IT', {
+      style: 'currency',
+      currency: 'EUR'
+    }).format(amount);
+  };
+
   return (
-    <div className={`product-card ${!product.available ? 'unavailable' : ''}`}>
+    <div className={`product-card ${!product.active ? 'inactive' : ''} ${product.featured ? 'featured' : ''}`}>
       <div className="product-image-container">
-        {product.image ? (
-          <img src={product.image} alt={product.name} className="product-image" />
+        {product.image_url ? (
+          <img src={product.image_url} alt={product.name} className="product-image" />
         ) : (
           <div className="product-placeholder">
             <span>{categoryIcon}</span>
           </div>
         )}
-        <div className="product-availability">
+        
+        <div className="product-badges">
           <button
-            className={`availability-btn ${product.available ? 'available' : 'unavailable'}`}
-            onClick={onToggleAvailability}
-            title={product.available ? 'Rendi non disponibile' : 'Rendi disponibile'}
+            className={`status-btn ${product.active ? 'active' : 'inactive'}`}
+            onClick={() => onToggleField(product.id, 'active', product.active)}
+            title={product.active ? 'Disattiva' : 'Attiva'}
           >
-            {product.available ? '✅' : '❌'}
+            {product.active ? '✅' : '❌'}
+          </button>
+          
+          <button
+            className={`featured-btn ${product.featured ? 'featured' : 'normal'}`}
+            onClick={() => onToggleField(product.id, 'featured', product.featured)}
+            title={product.featured ? 'Rimuovi da evidenza' : 'Metti in evidenza'}
+          >
+            {product.featured ? '⭐' : '☆'}
           </button>
         </div>
+        
+        <div className="sort-order-badge">{product.sort_order}</div>
       </div>
 
       <div className="product-content">
         <div className="product-header">
           <h3 className="product-name">{product.name}</h3>
-          <span className="product-price">€{parseFloat(product.price || 0).toFixed(2)}</span>
+          <span className="product-price">{formatCurrency(product.base_price)}</span>
         </div>
 
         <div className="product-category">
@@ -522,6 +636,24 @@ function ProductCard({ product, categoryName, categoryIcon, onEdit, onDelete, on
         {product.description && (
           <p className="product-description">{product.description}</p>
         )}
+
+        <div className="product-meta">
+          {product.preparation_time > 0 && (
+            <span className="meta-item">
+              ⏱️ {product.preparation_time} min
+            </span>
+          )}
+          {product.calories && (
+            <span className="meta-item">
+              🔥 {product.calories} kcal
+            </span>
+          )}
+          {product.variants_count > 0 && (
+            <span className="meta-item">
+              🔄 {product.variants_count} varianti
+            </span>
+          )}
+        </div>
 
         {product.allergens && product.allergens.length > 0 && (
           <div className="product-allergens">
@@ -538,7 +670,7 @@ function ProductCard({ product, categoryName, categoryIcon, onEdit, onDelete, on
 
         <div className="product-actions">
           <button 
-            className="btn-small primary"
+            className="btn-small secondary"
             onClick={onEdit}
           >
             ✏️ Modifica
@@ -560,23 +692,35 @@ function ProductModal({ product, categories, allergens, onClose, onSave }) {
   const [formData, setFormData] = useState({
     name: product?.name || '',
     description: product?.description || '',
-    price: product?.price || '',
+    base_price: product?.base_price || '',
     category_id: product?.category_id || '',
-    available: product?.available ?? true,
-    image: product?.image || '',
+    active: product?.active !== undefined ? Boolean(product.active) : true,
+    featured: product?.featured !== undefined ? Boolean(product.featured) : false,
+    image_url: product?.image_url || '',
+    sort_order: product?.sort_order || 0,
+    preparation_time: product?.preparation_time || 0,
+    calories: product?.calories || '',
     allergen_ids: product?.allergens?.map(a => a.id) || []
   });
-  const [saving, setSaving] = useState(false);
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSaving(true);
-
-    if (!formData.name.trim() || !formData.price || !formData.category_id) {
-      alert('Nome, prezzo e categoria sono obbligatori');
-      setSaving(false);
+    
+    if (!formData.name.trim() || !formData.base_price || !formData.category_id) {
+      setError('Nome, prezzo base e categoria sono obbligatori');
       return;
     }
+
+    if (parseFloat(formData.base_price) < 0) {
+      setError('Il prezzo deve essere positivo');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
 
     try {
       const url = product 
@@ -587,35 +731,36 @@ function ProductModal({ product, categories, allergens, onClose, onSave }) {
 
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          base_price: parseFloat(formData.base_price),
+          sort_order: parseInt(formData.sort_order) || 0,
+          preparation_time: parseInt(formData.preparation_time) || 0,
+          calories: formData.calories ? parseInt(formData.calories) : null
+        })
       });
 
-      if (response.ok) {
-        const savedProduct = await response.json();
-        onSave(savedProduct);
-        alert(product ? 'Prodotto aggiornato!' : 'Prodotto creato!');
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        alert(errorData.message || 'Errore nel salvare il prodotto');
+        throw new Error(errorData.error || `Errore nella ${product ? 'modifica' : 'creazione'} prodotto`);
       }
-    } catch (error) {
-      console.error('Error saving product:', error);
-      alert('Errore di rete');
+
+      onSave();
+    } catch (err) {
+      setError(err.message);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       [name]: type === 'checkbox' ? checked : value
-    });
+    }));
   };
 
   const handleAllergenChange = (allergenId) => {
@@ -623,137 +768,192 @@ function ProductModal({ product, categories, allergens, onClose, onSave }) {
       ? formData.allergen_ids.filter(id => id !== allergenId)
       : [...formData.allergen_ids, allergenId];
     
-    setFormData({ ...formData, allergen_ids: newAllergenIds });
+    setFormData(prev => ({ ...prev, allergen_ids: newAllergenIds }));
   };
 
   return (
     <div className="modal-overlay">
       <div className="modal-content large">
         <div className="modal-header">
-          <h3 className="modal-title">
-            {product ? `Modifica ${product.name}` : 'Nuovo Prodotto'}
-          </h3>
+          <h3>{product ? `Modifica ${product.name}` : 'Nuovo Prodotto'}</h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label">Nome Prodotto *</label>
-              <input
-                type="text"
-                name="name"
-                className="form-input"
-                value={formData.name}
-                onChange={handleChange}
-                required
-                placeholder="es. Birra alla spina, Carbonara..."
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Prezzo *</label>
-              <input
-                type="number"
-                name="price"
-                className="form-input"
-                value={formData.price}
-                onChange={handleChange}
-                required
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Categoria *</label>
-            <select
-              name="category_id"
-              className="form-select"
-              value={formData.category_id}
-              onChange={handleChange}
-              required
-            >
-              <option value="">Seleziona categoria</option>
-              {categories.map(category => (
-                <option key={category.id} value={category.id}>
-                  {category.icon} {category.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Descrizione</label>
-            <textarea
-              name="description"
-              className="form-textarea"
-              value={formData.description}
-              onChange={handleChange}
-              rows="3"
-              placeholder="Descrizione del prodotto..."
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">URL Immagine</label>
-            <input
-              type="url"
-              name="image"
-              className="form-input"
-              value={formData.image}
-              onChange={handleChange}
-              placeholder="https://esempio.com/immagine.jpg"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Allergeni</label>
-            <div className="allergens-grid">
-              {allergens.map(allergen => (
-                <label key={allergen.id} className="allergen-checkbox">
+          <div className="modal-body">
+            {error && <div className="error-message">❌ {error}</div>}
+            
+            <div className="form-grid">
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Nome Prodotto *</label>
                   <input
-                    type="checkbox"
-                    checked={formData.allergen_ids.includes(allergen.id)}
-                    onChange={() => handleAllergenChange(allergen.id)}
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="es. Birra alla spina, Carbonara..."
+                    required
                   />
-                  <span className="allergen-label">
-                    {allergen.name} {allergen.code && `(${allergen.code})`}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
+                </div>
 
-          <div className="form-group">
-            <label className="form-checkbox">
-              <input
-                type="checkbox"
-                name="available"
-                checked={formData.available}
-                onChange={handleChange}
-              />
-              <span className="checkbox-label">Prodotto disponibile</span>
-            </label>
+                <div className="form-group">
+                  <label className="form-label">Prezzo Base (€) *</label>
+                  <input
+                    type="number"
+                    name="base_price"
+                    value={formData.base_price}
+                    onChange={handleChange}
+                    className="form-input"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Categoria *</label>
+                  <select
+                    name="category_id"
+                    value={formData.category_id}
+                    onChange={handleChange}
+                    className="form-select"
+                    required
+                  >
+                    <option value="">Seleziona categoria</option>
+                    {categories.map(category => (
+                      <option key={category.id} value={category.id}>
+                        {category.icon} {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">URL Immagine</label>
+                  <input
+                    type="url"
+                    name="image_url"
+                    value={formData.image_url}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="https://esempio.com/immagine.jpg"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Descrizione</label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleChange}
+                  className="form-textarea"
+                  rows="3"
+                  placeholder="Descrizione dettagliata del prodotto..."
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Tempo Preparazione (minuti)</label>
+                  <input
+                    type="number"
+                    name="preparation_time"
+                    value={formData.preparation_time}
+                    onChange={handleChange}
+                    className="form-input"
+                    min="0"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Calorie</label>
+                  <input
+                    type="number"
+                    name="calories"
+                    value={formData.calories}
+                    onChange={handleChange}
+                    className="form-input"
+                    min="0"
+                    placeholder="es. 250"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Ordine di Visualizzazione</label>
+                <input
+                  type="number"
+                  name="sort_order"
+                  value={formData.sort_order}
+                  onChange={handleChange}
+                  className="form-input"
+                  min="0"
+                  placeholder="0"
+                />
+                <small className="form-help">
+                  Numero per ordinamento (0 = primo, maggiore = dopo)
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Allergeni</label>
+                <div className="allergens-grid">
+                  {allergens.map(allergen => (
+                    <label key={allergen.id} className="allergen-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={formData.allergen_ids.includes(allergen.id)}
+                        onChange={() => handleAllergenChange(allergen.id)}
+                      />
+                      <span className="allergen-label">
+                        {allergen.name} {allergen.code && `(${allergen.code})`}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-checkbox">
+                    <input
+                      type="checkbox"
+                      name="active"
+                      checked={formData.active}
+                      onChange={handleChange}
+                    />
+                    <span className="checkbox-label">Prodotto attivo</span>
+                  </label>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-checkbox">
+                    <input
+                      type="checkbox"
+                      name="featured"
+                      checked={formData.featured}
+                      onChange={handleChange}
+                    />
+                    <span className="checkbox-label">Prodotto in evidenza</span>
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="modal-actions">
-            <button 
-              type="button" 
-              className="btn secondary" 
-              onClick={onClose}
-              disabled={saving}
-            >
+            <button type="button" className="btn secondary" onClick={onClose}>
               Annulla
             </button>
-            <button 
-              type="submit" 
-              className="btn primary"
-              disabled={saving}
-            >
-              {saving ? 'Salvando...' : (product ? 'Aggiorna' : 'Crea Prodotto')}
+            <button type="submit" className="btn primary" disabled={loading}>
+              {loading ? 'Salvando...' : (product ? 'Aggiorna Prodotto' : 'Crea Prodotto')}
             </button>
           </div>
         </form>

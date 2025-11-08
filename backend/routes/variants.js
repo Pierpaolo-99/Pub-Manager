@@ -1,26 +1,31 @@
-const express = require('express');
-const router = express.Router();
-const {
-    getAllVariants,
-    getVariantStats,
-    getVariantById,
-    createVariant,
-    updateVariant,
-    deleteVariant,
-    getProductsForVariants,
-    getVariantsByProduct,
-    updateVariantOrder
-} = require('../controllers/variants_controller');
+const router = require('express').Router();
+const variantsController = require('../controllers/variants_controller');
 
-// Routes
-router.get('/stats', getVariantStats);
-router.get('/products', getProductsForVariants);
-router.get('/product/:productId', getVariantsByProduct);
-router.put('/order', updateVariantOrder);
-router.get('/:id', getVariantById);
-router.get('/', getAllVariants);
-router.post('/', createVariant);
-router.put('/:id', updateVariant);
-router.delete('/:id', deleteVariant);
+// GET statistiche varianti
+router.get('/stats', variantsController.getVariantStats);
+
+// GET prodotti per dropdown
+router.get('/products', variantsController.getProductsForVariants);
+
+// GET tutte le varianti
+router.get('/', variantsController.getAllVariants);
+
+// GET singola variante
+router.get('/:id', variantsController.getVariantById);
+
+// POST nuova variante
+router.post('/', variantsController.createVariant);
+
+// PUT aggiornamento variante
+router.put('/:id', variantsController.updateVariant);
+
+// DELETE variante
+router.delete('/:id', variantsController.deleteVariant);
+
+// PUT aggiornamento ordinamento varianti
+router.put('/order', variantsController.updateVariantOrder);
+
+// GET varianti per prodotto specifico
+router.get('/product/:productId', variantsController.getVariantsByProduct);
 
 module.exports = router;

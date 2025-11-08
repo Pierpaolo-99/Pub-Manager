@@ -1,6 +1,37 @@
 const connection = require('../database/db');
 
-// GET tutte le varianti
+// GET prodotti per dropdown (CORRETTA)
+function getProductsForVariants(req, res) {
+    const sql = `
+        SELECT 
+            p.id,
+            p.name,
+            p.base_price,
+            COALESCE(c.name, 'Nessuna categoria') as category_name,
+            COUNT(pv.id) as variant_count
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN product_variants pv ON p.id = pv.product_id
+        WHERE p.active = 1
+        GROUP BY p.id, p.name, p.base_price, c.name
+        ORDER BY c.name, p.name
+    `;
+    
+    connection.query(sql, (err, results) => {
+        if (err) {
+            console.error('Error fetching products for variants:', err);
+            return res.status(500).json({ 
+                error: 'Errore nel caricamento prodotti',
+                details: err.message 
+            });
+        }
+        
+        console.log(`✅ Fetched ${results.length} products for variants dropdown`);
+        res.json({ products: results || [] });
+    });
+}
+
+// GET tutte le varianti (CORRETTA)
 function getAllVariants(req, res) {
     const { 
         product_id, 
@@ -23,15 +54,13 @@ function getAllVariants(req, res) {
             pv.updated_at,
             p.name as product_name,
             p.base_price as product_base_price,
-            c.name as category_name,
+            COALESCE(c.name, 'Nessuna categoria') as category_name,
             COALESCE(s.quantity, 0) as stock_quantity,
-            s.unit as stock_unit,
-            COUNT(DISTINCT sm.id) as movement_count
+            COALESCE(s.unit, 'pcs') as stock_unit
         FROM product_variants pv
         INNER JOIN products p ON pv.product_id = p.id
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN stock s ON pv.id = s.product_variant_id
-        LEFT JOIN stock_movements sm ON pv.id = sm.product_variant_id
         WHERE 1=1
     `;
     
@@ -59,25 +88,67 @@ function getAllVariants(req, res) {
     connection.query(sql, params, (err, results) => {
         if (err) {
             console.error('Error fetching variants:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento varianti' });
+            return res.status(500).json({ 
+                error: 'Errore nel caricamento varianti',
+                details: err.message 
+            });
         }
         
-        // Calcola statistiche per i risultati correnti
-        const stats = calculateVariantStats(results);
+        // Aggiungi movimento count con query separata per sicurezza
+        const variantIds = results.map(v => v.id);
         
-        res.json({
-            variants: results,
-            stats,
-            pagination: {
-                limit: parseInt(limit),
-                offset: parseInt(offset),
-                total: results.length
-            }
-        });
+        if (variantIds.length > 0) {
+            const movementCountSql = `
+                SELECT product_variant_id, COUNT(*) as movement_count
+                FROM stock_movements 
+                WHERE product_variant_id IN (${variantIds.map(() => '?').join(',')})
+                GROUP BY product_variant_id
+            `;
+            
+            connection.query(movementCountSql, variantIds, (movErr, movResults) => {
+                if (!movErr && movResults) {
+                    const movementCounts = {};
+                    movResults.forEach(row => {
+                        movementCounts[row.product_variant_id] = row.movement_count;
+                    });
+                    
+                    // Aggiungi movement count a ogni variante
+                    results.forEach(variant => {
+                        variant.movement_count = movementCounts[variant.id] || 0;
+                    });
+                }
+                
+                // Calcola statistiche
+                const stats = calculateVariantStats(results);
+                
+                console.log(`✅ Fetched ${results.length} variants`);
+                res.json({
+                    variants: results || [],
+                    stats,
+                    pagination: {
+                        limit: parseInt(limit),
+                        offset: parseInt(offset),
+                        total: results.length
+                    }
+                });
+            });
+        } else {
+            const stats = calculateVariantStats(results);
+            
+            res.json({
+                variants: results || [],
+                stats,
+                pagination: {
+                    limit: parseInt(limit),
+                    offset: parseInt(offset),
+                    total: results.length
+                }
+            });
+        }
     });
 }
 
-// GET statistiche varianti
+// GET statistiche varianti (CORRETTA)
 function getVariantStats(req, res) {
     const { product_id, active } = req.query;
     
@@ -86,12 +157,12 @@ function getVariantStats(req, res) {
             COUNT(*) as total_variants,
             COUNT(CASE WHEN active = 1 THEN 1 END) as active_variants,
             COUNT(CASE WHEN active = 0 THEN 1 END) as inactive_variants,
-            COUNT(DISTINCT product_id) as products_with_variants,
-            AVG(price) as avg_price,
-            MIN(price) as min_price,
-            MAX(price) as max_price,
+            COUNT(DISTINCT product_id) as unique_products,
+            AVG(COALESCE(price, 0)) as avg_price,
+            MIN(COALESCE(price, 0)) as min_price,
+            MAX(COALESCE(price, 0)) as max_price,
             COUNT(CASE WHEN sku IS NOT NULL AND sku != '' THEN 1 END) as variants_with_sku
-        FROM product_variants
+        FROM product_variants pv
         WHERE 1=1
     `;
     
@@ -107,13 +178,69 @@ function getVariantStats(req, res) {
         params.push(active === 'true' ? 1 : 0);
     }
     
+    // Query aggiuntiva per stock info
+    let stockSql = `
+        SELECT 
+            COUNT(CASE WHEN s.quantity > 0 THEN 1 END) as with_stock,
+            COUNT(CASE WHEN COALESCE(s.quantity, 0) = 0 THEN 1 END) as out_of_stock
+        FROM product_variants pv
+        LEFT JOIN stock s ON pv.id = s.product_variant_id
+        WHERE 1=1
+    `;
+    
+    if (product_id) {
+        stockSql += ` AND pv.product_id = ?`;
+    }
+    
+    if (active !== undefined && active !== 'all') {
+        stockSql += ` AND pv.active = ?`;
+    }
+    
+    // Esegui prima query
     connection.query(sql, params, (err, results) => {
         if (err) {
             console.error('Error fetching variant stats:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento statistiche' });
+            return res.status(500).json({ 
+                error: 'Errore nel caricamento statistiche',
+                details: err.message 
+            });
         }
         
-        res.json(results[0]);
+        const basicStats = results[0];
+        
+        // Esegui seconda query per stock
+        connection.query(stockSql, params, (stockErr, stockResults) => {
+            if (stockErr) {
+                console.error('Error fetching stock stats:', stockErr);
+                // Continua senza stock info
+                return res.json({
+                    ...basicStats,
+                    with_stock: 0,
+                    out_of_stock: basicStats.total_variants,
+                    price_range: basicStats.max_price > 0 ? {
+                        min: basicStats.min_price,
+                        max: basicStats.max_price
+                    } : { min: 0, max: 0 }
+                });
+            }
+            
+            const stockStats = stockResults[0];
+            
+            res.json({
+                total: basicStats.total_variants || 0,
+                active: basicStats.active_variants || 0,
+                inactive: basicStats.inactive_variants || 0,
+                unique_products: basicStats.unique_products || 0,
+                avg_price: basicStats.avg_price || 0,
+                with_stock: stockStats.with_stock || 0,
+                out_of_stock: stockStats.out_of_stock || 0,
+                variants_with_sku: basicStats.variants_with_sku || 0,
+                price_range: basicStats.max_price > 0 ? {
+                    min: basicStats.min_price,
+                    max: basicStats.max_price
+                } : { min: 0, max: 0 }
+            });
+        });
     });
 }
 
@@ -126,9 +253,9 @@ function getVariantById(req, res) {
             pv.*,
             p.name as product_name,
             p.base_price as product_base_price,
-            c.name as category_name,
+            COALESCE(c.name, 'Nessuna categoria') as category_name,
             COALESCE(s.quantity, 0) as stock_quantity,
-            s.unit as stock_unit
+            COALESCE(s.unit, 'pcs') as stock_unit
         FROM product_variants pv
         INNER JOIN products p ON pv.product_id = p.id
         LEFT JOIN categories c ON p.category_id = c.id
@@ -139,7 +266,10 @@ function getVariantById(req, res) {
     connection.query(sql, [id], (err, results) => {
         if (err) {
             console.error('Error fetching variant:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento variante' });
+            return res.status(500).json({ 
+                error: 'Errore nel caricamento variante',
+                details: err.message 
+            });
         }
         
         if (results.length === 0) {
@@ -175,16 +305,19 @@ function createVariant(req, res) {
     }
     
     // Verifica che il prodotto esista
-    const checkProductSql = 'SELECT id FROM products WHERE id = ? AND is_available = 1';
+    const checkProductSql = 'SELECT id FROM products WHERE id = ? AND active = 1';
     
     connection.query(checkProductSql, [product_id], (err, productResults) => {
         if (err) {
             console.error('Error checking product:', err);
-            return res.status(500).json({ error: 'Errore nella verifica prodotto' });
+            return res.status(500).json({ 
+                error: 'Errore nella verifica prodotto',
+                details: err.message 
+            });
         }
         
         if (productResults.length === 0) {
-            return res.status(400).json({ error: 'Prodotto non trovato o non disponibile' });
+            return res.status(400).json({ error: 'Prodotto non trovato o non attivo' });
         }
         
         // Verifica unicità SKU se fornito
@@ -194,7 +327,10 @@ function createVariant(req, res) {
             connection.query(checkSkuSql, [sku, product_id], (err, skuResults) => {
                 if (err) {
                     console.error('Error checking SKU:', err);
-                    return res.status(500).json({ error: 'Errore nella verifica SKU' });
+                    return res.status(500).json({ 
+                        error: 'Errore nella verifica SKU',
+                        details: err.message 
+                    });
                 }
                 
                 if (skuResults.length > 0) {
@@ -228,7 +364,10 @@ function createVariant(req, res) {
                     if (err.code === 'ER_DUP_ENTRY') {
                         return res.status(400).json({ error: 'Variante con questo nome già esistente per il prodotto' });
                     }
-                    return res.status(500).json({ error: 'Errore nella creazione variante' });
+                    return res.status(500).json({ 
+                        error: 'Errore nella creazione variante',
+                        details: err.message 
+                    });
                 }
                 
                 const variantId = result.insertId;
@@ -264,7 +403,7 @@ function updateVariant(req, res) {
     } = req.body;
     
     // Validazione
-    if (!name || !price) {
+    if (!name || price === undefined || price === null) {
         return res.status(400).json({ 
             error: 'Nome e prezzo sono obbligatori' 
         });
@@ -282,7 +421,10 @@ function updateVariant(req, res) {
     connection.query(checkVariantSql, [id], (err, variantResults) => {
         if (err) {
             console.error('Error checking variant:', err);
-            return res.status(500).json({ error: 'Errore nella verifica variante' });
+            return res.status(500).json({ 
+                error: 'Errore nella verifica variante',
+                details: err.message 
+            });
         }
         
         if (variantResults.length === 0) {
@@ -298,7 +440,10 @@ function updateVariant(req, res) {
             connection.query(checkSkuSql, [sku, id, productId], (err, skuResults) => {
                 if (err) {
                     console.error('Error checking SKU:', err);
-                    return res.status(500).json({ error: 'Errore nella verifica SKU' });
+                    return res.status(500).json({ 
+                        error: 'Errore nella verifica SKU',
+                        details: err.message 
+                    });
                 }
                 
                 if (skuResults.length > 0) {
@@ -333,7 +478,10 @@ function updateVariant(req, res) {
                     if (err.code === 'ER_DUP_ENTRY') {
                         return res.status(400).json({ error: 'Variante con questo nome già esistente per il prodotto' });
                     }
-                    return res.status(500).json({ error: 'Errore nell\'aggiornamento variante' });
+                    return res.status(500).json({ 
+                        error: 'Errore nell\'aggiornamento variante',
+                        details: err.message 
+                    });
                 }
                 
                 if (result.affectedRows === 0) {
@@ -363,7 +511,10 @@ function deleteVariant(req, res) {
     connection.query(checkDependenciesSql, [id, id, id], (err, depResults) => {
         if (err) {
             console.error('Error checking dependencies:', err);
-            return res.status(500).json({ error: 'Errore nella verifica dipendenze' });
+            return res.status(500).json({ 
+                error: 'Errore nella verifica dipendenze',
+                details: err.message 
+            });
         }
         
         const deps = depResults[0];
@@ -383,7 +534,10 @@ function deleteVariant(req, res) {
         connection.query(deleteSql, [id], (err, result) => {
             if (err) {
                 console.error('Error deleting variant:', err);
-                return res.status(500).json({ error: 'Errore nella cancellazione variante' });
+                return res.status(500).json({ 
+                    error: 'Errore nella cancellazione variante',
+                    details: err.message 
+                });
             }
             
             if (result.affectedRows === 0) {
@@ -399,34 +553,6 @@ function deleteVariant(req, res) {
     });
 }
 
-// GET prodotti per dropdown
-function getProductsForVariants(req, res) {
-    const sql = `
-        SELECT 
-            p.id,
-            p.name,
-            p.base_price,
-            c.name as category_name,
-            COUNT(pv.id) as variant_count,
-            p.is_available
-        FROM products p
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN product_variants pv ON p.id = pv.product_id
-        WHERE p.is_available = 1
-        GROUP BY p.id, p.name, p.base_price, c.name, p.is_available
-        ORDER BY c.name, p.name
-    `;
-    
-    connection.query(sql, (err, results) => {
-        if (err) {
-            console.error('Error fetching products:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento prodotti' });
-        }
-        
-        res.json({ products: results });
-    });
-}
-
 // GET varianti per prodotto specifico
 function getVariantsByProduct(req, res) {
     const { productId } = req.params;
@@ -435,7 +561,7 @@ function getVariantsByProduct(req, res) {
         SELECT 
             pv.*,
             COALESCE(s.quantity, 0) as stock_quantity,
-            s.unit as stock_unit
+            COALESCE(s.unit, 'pcs') as stock_unit
         FROM product_variants pv
         LEFT JOIN stock s ON pv.id = s.product_variant_id
         WHERE pv.product_id = ?
@@ -445,10 +571,13 @@ function getVariantsByProduct(req, res) {
     connection.query(sql, [productId], (err, results) => {
         if (err) {
             console.error('Error fetching product variants:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento varianti prodotto' });
+            return res.status(500).json({ 
+                error: 'Errore nel caricamento varianti prodotto',
+                details: err.message 
+            });
         }
         
-        res.json({ variants: results });
+        res.json({ variants: results || [] });
     });
 }
 
@@ -477,21 +606,41 @@ function updateVariantOrder(req, res) {
         })
         .catch(err => {
             console.error('Error updating variant order:', err);
-            res.status(500).json({ error: 'Errore nell\'aggiornamento ordinamento' });
+            res.status(500).json({ 
+                error: 'Errore nell\'aggiornamento ordinamento',
+                details: err.message 
+            });
         });
 }
 
 // Funzione helper per statistiche
 function calculateVariantStats(variants) {
+    if (!variants || variants.length === 0) {
+        return {
+            total: 0,
+            today: 0,
+            this_week: 0,
+            active: 0,
+            inactive: 0,
+            with_stock: 0,
+            out_of_stock: 0,
+            unique_products: 0,
+            avg_price: 0,
+            price_range: { min: 0, max: 0 }
+        };
+    }
+    
     const today = new Date().toISOString().slice(0, 10);
     const thisWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     
     const todayVariants = variants.filter(v => 
-        new Date(v.created_at).toISOString().slice(0, 10) === today
+        v.created_at && new Date(v.created_at).toISOString().slice(0, 10) === today
     );
     const weekVariants = variants.filter(v => 
-        new Date(v.created_at).toISOString().slice(0, 10) >= thisWeek
+        v.created_at && new Date(v.created_at).toISOString().slice(0, 10) >= thisWeek
     );
+    
+    const prices = variants.map(v => parseFloat(v.price || 0)).filter(p => p > 0);
     
     return {
         total: variants.length,
@@ -499,14 +648,14 @@ function calculateVariantStats(variants) {
         this_week: weekVariants.length,
         active: variants.filter(v => v.active === 1).length,
         inactive: variants.filter(v => v.active === 0).length,
-        with_stock: variants.filter(v => parseFloat(v.stock_quantity) > 0).length,
-        out_of_stock: variants.filter(v => parseFloat(v.stock_quantity) === 0).length,
+        with_stock: variants.filter(v => parseFloat(v.stock_quantity || 0) > 0).length,
+        out_of_stock: variants.filter(v => parseFloat(v.stock_quantity || 0) === 0).length,
         unique_products: new Set(variants.map(v => v.product_id)).size,
-        avg_price: variants.length > 0 ? 
-            (variants.reduce((sum, v) => sum + parseFloat(v.price), 0) / variants.length) : 0,
-        price_range: variants.length > 0 ? {
-            min: Math.min(...variants.map(v => parseFloat(v.price))),
-            max: Math.max(...variants.map(v => parseFloat(v.price)))
+        avg_price: prices.length > 0 ? 
+            (prices.reduce((sum, price) => sum + price, 0) / prices.length) : 0,
+        price_range: prices.length > 0 ? {
+            min: Math.min(...prices),
+            max: Math.max(...prices)
         } : { min: 0, max: 0 }
     };
 }

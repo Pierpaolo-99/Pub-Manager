@@ -1,484 +1,496 @@
 const connection = require('../database/db');
 
-// GET tutti i movimenti stock
-function getAllStockMovements(req, res) {
-    const { 
-        product_id, 
-        type, 
-        reference_type, 
-        user_id, 
-        date_from, 
-        date_to,
-        reason,
-        limit = 100,
-        offset = 0 
-    } = req.query;
-    
-    let sql = `
-        SELECT 
-            sm.id,
-            sm.product_variant_id,
-            sm.type,
-            sm.quantity,
-            sm.reason,
-            sm.reference_id,
-            sm.reference_type,
-            sm.cost_per_unit,
-            sm.total_cost,
-            sm.notes,
-            sm.user_id,
-            sm.created_at,
-            pv.name as variant_name,
-            p.name as product_name,
-            p.id as product_id,
-            c.name as category_name,
-            u.username as user_name,
-            CASE 
-                WHEN sm.type = 'in' THEN '📥 Entrata'
-                WHEN sm.type = 'out' THEN '📤 Uscita'  
-                WHEN sm.type = 'adjustment' THEN '⚖️ Rettifica'
-                ELSE sm.type
-            END as type_display
-        FROM stock_movements sm
-        INNER JOIN product_variants pv ON sm.product_variant_id = pv.id
-        INNER JOIN products p ON pv.product_id = p.id
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN users u ON sm.user_id = u.id
-        WHERE 1=1
-    `;
-    
-    const params = [];
-    
-    // Filtri
-    if (product_id) {
-        sql += ` AND p.id = ?`;
-        params.push(product_id);
-    }
-    
-    if (type && type !== 'all') {
-        sql += ` AND sm.type = ?`;
-        params.push(type);
-    }
-    
-    if (reference_type && reference_type !== 'all') {
-        sql += ` AND sm.reference_type = ?`;
-        params.push(reference_type);
-    }
-    
-    if (user_id) {
-        sql += ` AND sm.user_id = ?`;
-        params.push(user_id);
-    }
-    
-    if (reason) {
-        sql += ` AND sm.reason LIKE ?`;
-        params.push(`%${reason}%`);
-    }
-    
-    if (date_from) {
-        sql += ` AND DATE(sm.created_at) >= ?`;
-        params.push(date_from);
-    }
-    
-    if (date_to) {
-        sql += ` AND DATE(sm.created_at) <= ?`;
-        params.push(date_to);
-    }
-    
-    sql += ` ORDER BY sm.created_at DESC LIMIT ? OFFSET ?`;
-    params.push(parseInt(limit), parseInt(offset));
-    
-    connection.query(sql, params, (err, results) => {
-        if (err) {
-            console.error('Error fetching stock movements:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento movimenti' });
+// GET tutti i movimenti con filtri
+async function getAllMovements(req, res) {
+    console.log('📈 getAllMovements chiamata');
+    try {
+        const {
+            type,
+            reference_type,
+            search,
+            date_from,
+            date_to,
+            product_id,
+            limit = 100,
+            offset = 0
+        } = req.query;
+
+        let sql = `
+            SELECT 
+                sm.id,
+                sm.product_variant_id,
+                sm.type,
+                sm.quantity,
+                sm.reason,
+                sm.reference_id,
+                sm.reference_type,
+                sm.cost_per_unit,
+                sm.total_cost,
+                sm.notes,
+                sm.user_id,
+                sm.created_at,
+                pv.name as variant_name,
+                p.name as product_name,
+                p.id as product_id,
+                c.name as category_name,
+                u.username as user_name
+            FROM stock_movements sm
+            INNER JOIN product_variants pv ON sm.product_variant_id = pv.id
+            INNER JOIN products p ON pv.product_id = p.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN users u ON sm.user_id = u.id
+            WHERE 1=1
+        `;
+
+        const params = [];
+
+        // Filtri
+        if (type && type !== 'all') {
+            sql += ` AND sm.type = ?`;
+            params.push(type);
         }
-        
-        // Calcola statistiche per i risultati correnti
-        const stats = calculateMovementStats(results);
-        
-        res.json({
-            movements: results,
-            stats,
-            pagination: {
-                limit: parseInt(limit),
-                offset: parseInt(offset),
-                total: results.length
-            }
+
+        if (reference_type && reference_type !== 'all') {
+            sql += ` AND sm.reference_type = ?`;
+            params.push(reference_type);
+        }
+
+        if (search) {
+            sql += ` AND (p.name LIKE ? OR pv.name LIKE ? OR sm.reason LIKE ? OR sm.notes LIKE ?)`;
+            params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+        }
+
+        if (product_id && product_id !== 'all') {
+            sql += ` AND p.id = ?`;
+            params.push(product_id);
+        }
+
+        if (date_from) {
+            sql += ` AND DATE(sm.created_at) >= ?`;
+            params.push(date_from);
+        }
+
+        if (date_to) {
+            sql += ` AND DATE(sm.created_at) <= ?`;
+            params.push(date_to);
+        }
+
+        sql += ` ORDER BY sm.created_at DESC LIMIT ? OFFSET ?`;
+        params.push(parseInt(limit), parseInt(offset));
+
+        const movements = await new Promise((resolve, reject) => {
+            connection.query(sql, params, (err, results) => {
+                if (err) {
+                    console.error('❌ Error in getAllMovements:', err);
+                    reject(err);
+                } else {
+                    resolve(results || []);
+                }
+            });
         });
+
+        console.log(`✅ Caricati ${movements.length} movimenti`);
+        res.json({ movements });
+
+    } catch (error) {
+        console.error('❌ Error in getAllMovements:', error);
+        res.status(500).json({ 
+            error: 'Errore nel caricamento movimenti',
+            message: error.message 
+        });
+    }
+}
+
+// GET prodotti per filtro dropdown
+function getProductsForMovements(req, res) {
+    const sql = `
+        SELECT DISTINCT
+            p.id,
+            p.name as product_name,
+            pv.id as variant_id,
+            pv.name as variant_name,
+            CONCAT(p.name, ' - ', pv.name) as display_name,
+            s.quantity as current_stock,
+            s.cost_per_unit
+        FROM products p
+        INNER JOIN product_variants pv ON p.id = pv.product_id
+        LEFT JOIN stock s ON pv.id = s.product_variant_id
+        WHERE p.active = 1 AND pv.active = 1
+        ORDER BY p.name, pv.name
+    `;
+
+    connection.query(sql, (err, results) => {
+        if (err) {
+            console.error('❌ Error fetching products for movements:', err);
+            return res.status(500).json({ 
+                error: 'Errore nel caricamento prodotti',
+                details: err.message 
+            });
+        }
+
+        console.log(`✅ Caricati ${results.length} prodotti per movimenti`);
+        res.json({ products: results || [] });
     });
 }
 
 // GET statistiche movimenti
-function getMovementStats(req, res) {
+function getMovementsStats(req, res) {
     const { date_from, date_to, type, reference_type } = req.query;
     
     let sql = `
         SELECT 
             COUNT(*) as total_movements,
-            COUNT(CASE WHEN type = 'in' THEN 1 END) as entries,
-            COUNT(CASE WHEN type = 'out' THEN 1 END) as exits,
-            COUNT(CASE WHEN type = 'adjustment' THEN 1 END) as adjustments,
-            SUM(CASE WHEN type = 'in' THEN quantity ELSE 0 END) as total_in,
-            SUM(CASE WHEN type = 'out' THEN quantity ELSE 0 END) as total_out,
-            SUM(CASE WHEN type = 'in' THEN total_cost ELSE 0 END) as value_in,
-            SUM(CASE WHEN type = 'out' THEN total_cost ELSE 0 END) as value_out,
-            COUNT(DISTINCT product_variant_id) as affected_products,
-            COUNT(DISTINCT user_id) as active_users,
-            AVG(CASE WHEN cost_per_unit IS NOT NULL THEN cost_per_unit END) as avg_cost_per_unit
-        FROM stock_movements
+            COUNT(CASE WHEN type = 'in' THEN 1 END) as inbound_movements,
+            COUNT(CASE WHEN type = 'out' THEN 1 END) as outbound_movements,
+            COUNT(CASE WHEN type = 'adjustment' THEN 1 END) as adjustment_movements,
+            COUNT(CASE WHEN reference_type = 'order' THEN 1 END) as order_movements,
+            COUNT(CASE WHEN reference_type = 'manual' THEN 1 END) as manual_movements,
+            COUNT(CASE WHEN reference_type = 'supplier' THEN 1 END) as supplier_movements,
+            COALESCE(SUM(CASE WHEN type = 'in' THEN quantity ELSE 0 END), 0) as total_inbound,
+            COALESCE(SUM(CASE WHEN type = 'out' THEN quantity ELSE 0 END), 0) as total_outbound,
+            COALESCE(SUM(CASE WHEN type = 'in' THEN total_cost ELSE 0 END), 0) as total_inbound_value,
+            COALESCE(SUM(CASE WHEN type = 'out' THEN total_cost ELSE 0 END), 0) as total_outbound_value
+        FROM stock_movements sm
         WHERE 1=1
     `;
-    
+
     const params = [];
-    
-    if (type && type !== 'all') {
-        sql += ` AND type = ?`;
-        params.push(type);
-    }
-    
-    if (reference_type && reference_type !== 'all') {
-        sql += ` AND reference_type = ?`;
-        params.push(reference_type);
-    }
-    
+
     if (date_from) {
-        sql += ` AND DATE(created_at) >= ?`;
+        sql += ` AND DATE(sm.created_at) >= ?`;
         params.push(date_from);
     }
-    
+
     if (date_to) {
-        sql += ` AND DATE(created_at) <= ?`;
+        sql += ` AND DATE(sm.created_at) <= ?`;
         params.push(date_to);
     }
-    
+
+    if (type && type !== 'all') {
+        sql += ` AND sm.type = ?`;
+        params.push(type);
+    }
+
+    if (reference_type && reference_type !== 'all') {
+        sql += ` AND sm.reference_type = ?`;
+        params.push(reference_type);
+    }
+
     connection.query(sql, params, (err, results) => {
         if (err) {
-            console.error('Error fetching movement stats:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento statistiche' });
+            console.error('❌ Error fetching movements stats:', err);
+            return res.status(500).json({ 
+                error: 'Errore nel caricamento statistiche',
+                details: err.message 
+            });
         }
+
+        const stats = results[0] || {};
         
-        res.json(results[0]);
+        // Assicurati che tutti i valori siano numerici
+        Object.keys(stats).forEach(key => {
+            if (stats[key] === null || stats[key] === undefined) {
+                stats[key] = 0;
+            } else if (typeof stats[key] === 'string') {
+                stats[key] = parseFloat(stats[key]) || 0;
+            }
+        });
+
+        console.log('✅ Stats movimenti:', stats);
+        res.json(stats);
     });
 }
 
 // POST nuovo movimento
-function createStockMovement(req, res) {
+function createMovement(req, res) {
     const {
         product_variant_id,
-        type, // 'in', 'out', 'adjustment'
+        type,
         quantity,
         reason,
         reference_id,
         reference_type = 'manual',
         cost_per_unit,
-        notes,
-        auto_update_stock = true
+        notes
     } = req.body;
-    
-    const user_id = req.user?.id || null;
-    
+
     // Validazione
     if (!product_variant_id || !type || !quantity) {
         return res.status(400).json({ 
-            error: 'Variante prodotto, tipo e quantità sono obbligatori' 
+            error: 'Prodotto, tipo e quantità sono obbligatori' 
         });
     }
-    
+
     if (!['in', 'out', 'adjustment'].includes(type)) {
-        return res.status(400).json({ 
-            error: 'Tipo movimento non valido. Usa: in, out, adjustment' 
-        });
+        return res.status(400).json({ error: 'Tipo movimento non valido' });
     }
-    
+
     if (!['order', 'manual', 'supplier'].includes(reference_type)) {
-        return res.status(400).json({ 
-            error: 'Tipo riferimento non valido. Usa: order, manual, supplier' 
-        });
+        return res.status(400).json({ error: 'Tipo riferimento non valido' });
     }
-    
-    // Calcola costo totale
-    const total_cost = cost_per_unit ? (parseFloat(cost_per_unit) * Math.abs(parseFloat(quantity))) : null;
-    
+
+    const numQuantity = parseFloat(quantity);
+    if (isNaN(numQuantity) || numQuantity <= 0) {
+        return res.status(400).json({ error: 'Quantità deve essere positiva' });
+    }
+
+    const numCostPerUnit = cost_per_unit ? parseFloat(cost_per_unit) : 0;
+    const totalCost = numQuantity * numCostPerUnit;
+
     // Inizia transazione
     connection.beginTransaction((err) => {
         if (err) {
-            console.error('Error starting transaction:', err);
-            return res.status(500).json({ error: 'Errore nell\'elaborazione' });
+            console.error('❌ Error starting transaction:', err);
+            return res.status(500).json({ error: 'Errore database' });
         }
-        
-        // 1. Inserisci movimento
-        const insertMovementSql = `
+
+        // Inserisci movimento
+        const insertSql = `
             INSERT INTO stock_movements (
                 product_variant_id, type, quantity, reason, reference_id, 
                 reference_type, cost_per_unit, total_cost, notes, user_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
-        
-        const movementParams = [
+
+        const insertParams = [
             product_variant_id,
             type,
-            parseFloat(quantity),
+            numQuantity,
             reason || null,
             reference_id || null,
             reference_type,
-            cost_per_unit ? parseFloat(cost_per_unit) : null,
-            total_cost,
+            numCostPerUnit || null,
+            totalCost || null,
             notes || null,
-            user_id
+            req.user?.id || 1 // Fallback al primo utente se sessione non funziona
         ];
-        
-        connection.query(insertMovementSql, movementParams, (err, movementResult) => {
+
+        connection.query(insertSql, insertParams, (err, result) => {
             if (err) {
-                console.error('Error inserting movement:', err);
+                console.error('❌ Error inserting movement:', err);
                 return connection.rollback(() => {
-                    res.status(500).json({ error: 'Errore nella creazione movimento' });
+                    res.status(500).json({ 
+                        error: 'Errore nella creazione movimento',
+                        details: err.message 
+                    });
                 });
             }
-            
-            const movementId = movementResult.insertId;
-            
-            // 2. Aggiorna stock se richiesto
-            if (auto_update_stock) {
-                updateStockFromMovement(product_variant_id, type, quantity, (stockErr) => {
-                    if (stockErr) {
-                        console.error('Error updating stock:', stockErr);
-                        return connection.rollback(() => {
-                            res.status(500).json({ error: 'Errore nell\'aggiornamento stock' });
+
+            const movementId = result.insertId;
+
+            // Aggiorna stock se esiste
+            const updateStockSql = `
+                UPDATE stock 
+                SET 
+                    quantity = quantity + (CASE WHEN ? = 'in' THEN ? WHEN ? = 'out' THEN -? ELSE 0 END),
+                    cost_per_unit = COALESCE(?, cost_per_unit),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE product_variant_id = ?
+            `;
+
+            connection.query(updateStockSql, [
+                type, numQuantity, type, numQuantity, 
+                numCostPerUnit > 0 ? numCostPerUnit : null,
+                product_variant_id
+            ], (err2, updateResult) => {
+                if (err2) {
+                    console.error('❌ Error updating stock:', err2);
+                    return connection.rollback(() => {
+                        res.status(500).json({ 
+                            error: 'Errore aggiornamento stock',
+                            details: err2.message 
                         });
-                    }
-                    
-                    // Commit transazione
-                    connection.commit((commitErr) => {
-                        if (commitErr) {
-                            console.error('Error committing transaction:', commitErr);
+                    });
+                }
+
+                // Se non c'è stock record esistente e il movimento è 'in', crealo
+                if (updateResult.affectedRows === 0 && type === 'in') {
+                    const insertStockSql = `
+                        INSERT INTO stock (
+                            product_variant_id, quantity, cost_per_unit, unit, 
+                            min_threshold, max_threshold, supplier_id
+                        ) VALUES (?, ?, ?, 'pcs', 10, 100, NULL)
+                    `;
+
+                    connection.query(insertStockSql, [
+                        product_variant_id, 
+                        numQuantity, 
+                        numCostPerUnit || 0
+                    ], (err3) => {
+                        if (err3) {
+                            console.error('❌ Error creating stock record:', err3);
                             return connection.rollback(() => {
-                                res.status(500).json({ error: 'Errore nel salvataggio' });
+                                res.status(500).json({ 
+                                    error: 'Errore creazione stock',
+                                    details: err3.message 
+                                });
                             });
                         }
-                        
-                        console.log(`✅ Movement created: ${movementId} (${type})`);
+
+                        // Commit transazione
+                        connection.commit((err4) => {
+                            if (err4) {
+                                console.error('❌ Error committing transaction:', err4);
+                                return connection.rollback(() => {
+                                    res.status(500).json({ error: 'Errore commit' });
+                                });
+                            }
+
+                            console.log(`✅ Created movement ${movementId} with new stock record`);
+                            res.status(201).json({
+                                id: movementId,
+                                message: 'Movimento creato con successo'
+                            });
+                        });
+                    });
+                } else {
+                    // Commit transazione
+                    connection.commit((err4) => {
+                        if (err4) {
+                            console.error('❌ Error committing transaction:', err4);
+                            return connection.rollback(() => {
+                                res.status(500).json({ error: 'Errore commit' });
+                            });
+                        }
+
+                        console.log(`✅ Created movement ${movementId}`);
                         res.status(201).json({
                             id: movementId,
-                            message: 'Movimento creato con successo',
-                            stock_updated: true
+                            message: 'Movimento creato con successo'
                         });
                     });
-                });
-            } else {
-                // Commit senza aggiornare stock
-                connection.commit((commitErr) => {
-                    if (commitErr) {
-                        console.error('Error committing transaction:', commitErr);
-                        return connection.rollback(() => {
-                            res.status(500).json({ error: 'Errore nel salvataggio' });
-                        });
-                    }
-                    
-                    console.log(`✅ Movement created: ${movementId} (${type}) - no stock update`);
-                    res.status(201).json({
-                        id: movementId,
-                        message: 'Movimento creato con successo',
-                        stock_updated: false
-                    });
-                });
-            }
+                }
+            });
         });
     });
 }
 
-// PUT aggiornamento movimento (limitato)
-function updateStockMovement(req, res) {
+// PUT aggiornamento movimento (solo note e motivo)
+function updateMovement(req, res) {
     const { id } = req.params;
     const { reason, notes } = req.body;
-    
-    // Solo alcuni campi sono modificabili dopo la creazione per evitare inconsistenze
+
     const sql = `
         UPDATE stock_movements 
-        SET reason = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+        SET reason = ?, notes = ? 
         WHERE id = ?
     `;
-    
-    connection.query(sql, [reason, notes, id], (err, result) => {
+
+    connection.query(sql, [reason || null, notes || null, id], (err, result) => {
         if (err) {
-            console.error('Error updating movement:', err);
-            return res.status(500).json({ error: 'Errore nell\'aggiornamento movimento' });
+            console.error('❌ Error updating movement:', err);
+            return res.status(500).json({ 
+                error: 'Errore aggiornamento movimento',
+                details: err.message 
+            });
         }
-        
+
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: 'Movimento non trovato' });
         }
-        
-        console.log(`✅ Movement updated: ${id}`);
+
+        console.log(`✅ Updated movement ${id}`);
         res.json({ message: 'Movimento aggiornato con successo' });
     });
 }
 
-// DELETE movimento (solo admin)
-function deleteStockMovement(req, res) {
+// DELETE movimento
+function deleteMovement(req, res) {
     const { id } = req.params;
-    const { revert_stock = false } = req.body;
-    
-    if (revert_stock) {
-        return res.status(501).json({ 
-            error: 'Funzionalità di revert automatico non implementata per sicurezza' 
-        });
-    }
-    
-    const sql = 'DELETE FROM stock_movements WHERE id = ?';
-    
-    connection.query(sql, [id], (err, result) => {
+
+    // Prima ottieni i dettagli del movimento
+    const getMovementSql = `
+        SELECT product_variant_id, type, quantity 
+        FROM stock_movements 
+        WHERE id = ?
+    `;
+
+    connection.query(getMovementSql, [id], (err, results) => {
         if (err) {
-            console.error('Error deleting movement:', err);
-            return res.status(500).json({ error: 'Errore nella cancellazione movimento' });
+            console.error('❌ Error fetching movement:', err);
+            return res.status(500).json({ 
+                error: 'Errore nel caricamento movimento',
+                details: err.message 
+            });
         }
-        
-        if (result.affectedRows === 0) {
+
+        if (results.length === 0) {
             return res.status(404).json({ error: 'Movimento non trovato' });
         }
-        
-        console.log(`✅ Movement deleted: ${id}`);
-        res.json({ message: 'Movimento eliminato con successo' });
-    });
-}
 
-// GET prodotti per dropdown
-function getProductsForMovements(req, res) {
-    const sql = `
-        SELECT 
-            p.id as product_id,
-            p.name as product_name,
-            pv.id as variant_id,
-            pv.name as variant_name,
-            c.name as category_name,
-            COALESCE(s.quantity, 0) as current_stock,
-            s.unit,
-            s.cost_per_unit
-        FROM products p
-        INNER JOIN product_variants pv ON p.id = pv.product_id
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN stock s ON pv.id = s.product_variant_id
-        WHERE p.is_available = 1 AND pv.is_active = 1
-        ORDER BY p.name, pv.name
-    `;
-    
-    connection.query(sql, (err, results) => {
-        if (err) {
-            console.error('Error fetching products:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento prodotti' });
-        }
-        
-        res.json({ products: results });
-    });
-}
+        const movement = results[0];
 
-// GET movimenti per prodotto specifico
-function getProductMovements(req, res) {
-    const { productId } = req.params;
-    const { limit = 50 } = req.query;
-    
-    const sql = `
-        SELECT 
-            sm.*,
-            pv.name as variant_name,
-            u.username as user_name,
-            CASE 
-                WHEN sm.type = 'in' THEN '📥 Entrata'
-                WHEN sm.type = 'out' THEN '📤 Uscita'
-                WHEN sm.type = 'adjustment' THEN '⚖️ Rettifica'
-                ELSE sm.type
-            END as type_display
-        FROM stock_movements sm
-        INNER JOIN product_variants pv ON sm.product_variant_id = pv.id
-        INNER JOIN products p ON pv.product_id = p.id
-        LEFT JOIN users u ON sm.user_id = u.id
-        WHERE p.id = ?
-        ORDER BY sm.created_at DESC
-        LIMIT ?
-    `;
-    
-    connection.query(sql, [productId, parseInt(limit)], (err, results) => {
-        if (err) {
-            console.error('Error fetching product movements:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento movimenti prodotto' });
-        }
-        
-        res.json({ movements: results });
-    });
-}
+        // Inizia transazione per eliminare e aggiornare stock
+        connection.beginTransaction((err) => {
+            if (err) {
+                console.error('❌ Error starting transaction:', err);
+                return res.status(500).json({ error: 'Errore database' });
+            }
 
-// Funzione helper per aggiornare stock da movimento
-function updateStockFromMovement(product_variant_id, type, quantity, callback) {
-    // Determina il cambio di quantità
-    let quantityChange = parseFloat(quantity);
-    if (type === 'out') {
-        quantityChange = -Math.abs(quantityChange);
-    } else if (type === 'in') {
-        quantityChange = Math.abs(quantityChange);
-    }
-    // Per 'adjustment' usiamo la quantità così com'è (può essere positiva o negativa)
-    
-    // Verifica se esiste già un record stock
-    const checkStockSql = 'SELECT quantity FROM stock WHERE product_variant_id = ?';
-    
-    connection.query(checkStockSql, [product_variant_id], (err, results) => {
-        if (err) return callback(err);
-        
-        if (results.length > 0) {
-            // Aggiorna stock esistente
-            const updateStockSql = `
-                UPDATE stock 
-                SET quantity = GREATEST(0, quantity + ?), 
-                    updated_at = CURRENT_TIMESTAMP 
-                WHERE product_variant_id = ?
-            `;
-            connection.query(updateStockSql, [quantityChange, product_variant_id], callback);
-        } else {
-            // Crea nuovo record stock se non esiste
-            const insertStockSql = `
-                INSERT INTO stock (product_variant_id, quantity, unit, created_at, updated_at) 
-                VALUES (?, GREATEST(0, ?), 'pcs', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            `;
-            connection.query(insertStockSql, [product_variant_id, quantityChange], callback);
-        }
-    });
-}
+            // Elimina movimento
+            const deleteSql = 'DELETE FROM stock_movements WHERE id = ?';
 
-// Funzione helper per statistiche
-function calculateMovementStats(movements) {
-    const today = new Date().toISOString().slice(0, 10);
-    const thisWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    
-    const todayMovements = movements.filter(m => 
-        new Date(m.created_at).toISOString().slice(0, 10) === today
-    );
-    const weekMovements = movements.filter(m => 
-        new Date(m.created_at).toISOString().slice(0, 10) >= thisWeek
-    );
-    
-    return {
-        total: movements.length,
-        today: todayMovements.length,
-        this_week: weekMovements.length,
-        entries: movements.filter(m => m.type === 'in').length,
-        exits: movements.filter(m => m.type === 'out').length,
-        adjustments: movements.filter(m => m.type === 'adjustment').length,
-        total_value_in: movements
-            .filter(m => m.type === 'in')
-            .reduce((sum, m) => sum + (parseFloat(m.total_cost) || 0), 0),
-        total_value_out: movements
-            .filter(m => m.type === 'out')
-            .reduce((sum, m) => sum + (parseFloat(m.total_cost) || 0), 0),
-        unique_products: new Set(movements.map(m => m.product_variant_id)).size
-    };
+            connection.query(deleteSql, [id], (err, result) => {
+                if (err) {
+                    console.error('❌ Error deleting movement:', err);
+                    return connection.rollback(() => {
+                        res.status(500).json({ 
+                            error: 'Errore eliminazione movimento',
+                            details: err.message 
+                        });
+                    });
+                }
+
+                // Inverti l'effetto sul stock
+                const reverseStockSql = `
+                    UPDATE stock 
+                    SET quantity = quantity - (CASE 
+                        WHEN ? = 'in' THEN ? 
+                        WHEN ? = 'out' THEN -? 
+                        ELSE 0 
+                    END),
+                    updated_at = CURRENT_TIMESTAMP
+                    WHERE product_variant_id = ?
+                `;
+
+                connection.query(reverseStockSql, [
+                    movement.type, movement.quantity,
+                    movement.type, movement.quantity,
+                    movement.product_variant_id
+                ], (err2) => {
+                    if (err2) {
+                        console.error('❌ Error reversing stock:', err2);
+                        return connection.rollback(() => {
+                            res.status(500).json({ 
+                                error: 'Errore aggiornamento stock',
+                                details: err2.message 
+                            });
+                        });
+                    }
+
+                    // Commit transazione
+                    connection.commit((err3) => {
+                        if (err3) {
+                            console.error('❌ Error committing transaction:', err3);
+                            return connection.rollback(() => {
+                                res.status(500).json({ error: 'Errore commit' });
+                            });
+                        }
+
+                        console.log(`✅ Deleted movement ${id} and updated stock`);
+                        res.json({ message: 'Movimento eliminato con successo' });
+                    });
+                });
+            });
+        });
+    });
 }
 
 module.exports = {
-    getAllStockMovements,
-    getMovementStats,
-    createStockMovement,
-    updateStockMovement,
-    deleteStockMovement,
-    getProductMovements,
-    getProductsForMovements
+    getAllMovements,
+    getProductsForMovements,
+    getMovementsStats,
+    createMovement,
+    updateMovement,
+    deleteMovement
 };
