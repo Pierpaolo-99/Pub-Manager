@@ -1,40 +1,45 @@
 import { useState, useEffect } from "react";
-import "./TablesSection.css";
+import "./StockMovementsSection.css";
 
-export default function TablesSection() {
-  const [tables, setTables] = useState([]);
-  const [filteredTables, setFilteredTables] = useState([]);
+export default function StockMovementsSection() {
+  const [movements, setMovements] = useState([]);
+  const [filteredMovements, setFilteredMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingTable, setEditingTable] = useState(null);
-  const [showQRModal, setShowQRModal] = useState(null);
-  const [filterArea, setFilterArea] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterCapacity, setFilterCapacity] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState('grid');
-  const [error, setError] = useState(null);
+  const [editingMovement, setEditingMovement] = useState(null);
   const [stats, setStats] = useState({});
+  const [error, setError] = useState(null);
+  
+  const [filters, setFilters] = useState({
+    search: '',
+    type: 'all',
+    reference_type: 'all',
+    date_from: '',
+    date_to: '',
+    product_id: 'all'
+  });
+  
+  const [products, setProducts] = useState([]);
 
   useEffect(() => {
-    fetchTables();
-  }, []);
+    fetchMovements();
+    fetchProducts();
+    fetchStats();
+  }, [filters]);
 
-  useEffect(() => {
-    filterTables();
-  }, [tables, searchTerm, filterArea, filterStatus, filterCapacity]);
-
-  const fetchTables = async () => {
+  const fetchMovements = async () => {
     try {
       setLoading(true);
       setError(null);
       
       const params = new URLSearchParams();
-      if (filterArea) params.append('location', filterArea);
-      if (filterStatus) params.append('status', mapFrontendStatusToDb(filterStatus));
-      if (filterCapacity) params.append('capacity', filterCapacity);
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && value !== 'all') {
+          params.append(key, value);
+        }
+      });
       
-      const response = await fetch(`http://localhost:3000/api/tables?${params}`, {
+      const response = await fetch(`http://localhost:3000/api/stock-movements?${params}`, {
         credentials: 'include'
       });
       
@@ -43,286 +48,232 @@ export default function TablesSection() {
       }
       
       const data = await response.json();
-      setTables(data.tables || []);
-      setStats(data.summary || {});
+      setMovements(data.movements || []);
+      setFilteredMovements(data.movements || []);
       
     } catch (err) {
-      console.error('❌ Error fetching tables:', err);
+      console.error('❌ Error fetching movements:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const filterTables = () => {
-    let filtered = tables;
-
-    // Filtro per testo (numero tavolo, note)
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(table =>
-        table.number.toString().includes(term) ||
-        table.notes?.toLowerCase().includes(term) ||
-        table.qr_code.toLowerCase().includes(term)
-      );
-    }
-
-    // Filtro per area
-    if (filterArea) {
-      filtered = filtered.filter(table => table.location === filterArea);
-    }
-
-    // Filtro per stato
-    if (filterStatus) {
-      filtered = filtered.filter(table => mapDbStatusToFrontend(table.status) === filterStatus);
-    }
-
-    // Filtro per capacità
-    if (filterCapacity) {
-      if (filterCapacity === '1-2') {
-        filtered = filtered.filter(table => table.capacity <= 2);
-      } else if (filterCapacity === '3-4') {
-        filtered = filtered.filter(table => table.capacity >= 3 && table.capacity <= 4);
-      } else if (filterCapacity === '5-6') {
-        filtered = filtered.filter(table => table.capacity >= 5 && table.capacity <= 6);
-      } else if (filterCapacity === '7+') {
-        filtered = filtered.filter(table => table.capacity >= 7);
-      }
-    }
-
-    setFilteredTables(filtered);
-  };
-
-  const mapDbStatusToFrontend = (dbStatus) => {
-    const mapping = {
-      'free': 'libero',
-      'occupied': 'occupato',
-      'reserved': 'riservato',
-      'cleaning': 'pulizia'
-    };
-    return mapping[dbStatus] || dbStatus;
-  };
-
-  const mapFrontendStatusToDb = (frontendStatus) => {
-    const mapping = {
-      'libero': 'free',
-      'occupato': 'occupied',
-      'riservato': 'reserved',
-      'pulizia': 'cleaning'
-    };
-    return mapping[frontendStatus] || frontendStatus;
-  };
-
-  const getStatusIcon = (status) => {
-    const mappedStatus = mapDbStatusToFrontend(status);
-    const icons = {
-      'libero': '🟢',
-      'occupato': '🔴', 
-      'riservato': '🟡',
-      'pulizia': '🔵',
-      'fuori_servizio': '⚫'
-    };
-    return icons[mappedStatus] || '⚪';
-  };
-
-  const getStatusColor = (status) => {
-    const mappedStatus = mapDbStatusToFrontend(status);
-    const colors = {
-      'libero': 'success',
-      'occupato': 'danger',
-      'riservato': 'warning', 
-      'pulizia': 'info',
-      'fuori_servizio': 'dark'
-    };
-    return colors[mappedStatus] || 'secondary';
-  };
-
-  const getStatusLabel = (status) => {
-    const mappedStatus = mapDbStatusToFrontend(status);
-    const labels = {
-      'libero': 'Libero',
-      'occupato': 'Occupato',
-      'riservato': 'Riservato',
-      'pulizia': 'Pulizia',
-      'fuori_servizio': 'Fuori Servizio'
-    };
-    return labels[mappedStatus] || status;
-  };
-
-  const getCapacityIcon = (capacity) => {
-    if (capacity <= 2) return '👥';
-    if (capacity <= 4) return '👨‍👩‍👧';
-    if (capacity <= 6) return '👨‍👩‍👧‍👦';
-    return '🏢';
-  };
-
-  const changeTableStatus = async (tableId, newStatus) => {
-    if (!confirm(`Cambiare stato del tavolo?`)) return;
-
+  const fetchProducts = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/api/tables/${tableId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status: newStatus })
+      const response = await fetch('http://localhost:3000/api/stock-movements/products', {
+        credentials: 'include'
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Errore nell\'aggiornamento stato');
+      
+      if (response.ok) {
+        const data = await response.json();
+        setProducts(data.products || []);
       }
-
-      await fetchTables();
     } catch (err) {
-      console.error('❌ Error updating table status:', err);
-      alert(`Errore: ${err.message}`);
+      console.error('❌ Error fetching products:', err);
     }
   };
 
-  const deleteTable = async (tableId) => {
-    const table = tables.find(t => t.id === tableId);
-    if (!table) return;
-
-    if (!confirm(`Eliminare definitivamente il Tavolo ${table.number}?`)) return;
-
+  const fetchStats = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/api/tables/${tableId}`, {
+      const params = new URLSearchParams();
+      if (filters.date_from) params.append('date_from', filters.date_from);
+      if (filters.date_to) params.append('date_to', filters.date_to);
+      if (filters.type !== 'all') params.append('type', filters.type);
+      if (filters.reference_type !== 'all') params.append('reference_type', filters.reference_type);
+      
+      const response = await fetch(`http://localhost:3000/api/stock-movements/stats?${params}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching stats:', err);
+    }
+  };
+
+  const handleDeleteMovement = async (id, productName) => {
+    if (!confirm(`Eliminare il movimento per "${productName}"?\n\nATTENZIONE: Lo stock NON verrà automaticamente revertito.`)) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`http://localhost:3000/api/stock-movements/${id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
-
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Errore nell\'eliminazione');
+        throw new Error('Errore nell\'eliminazione');
       }
-
-      await fetchTables();
+      
+      await fetchMovements();
+      await fetchStats();
+      console.log(`✅ Deleted movement: ${id}`);
+      
     } catch (err) {
-      console.error('❌ Error deleting table:', err);
+      console.error('❌ Error deleting movement:', err);
       alert(`Errore: ${err.message}`);
     }
   };
 
-  const generateQRCode = (table) => {
-    const qrData = {
-      tableId: table.id,
-      tableNumber: table.number,
-      pubUrl: `${window.location.origin}/table/${table.qr_code}`
+  const getTypeIcon = (type) => {
+    const icons = {
+      'in': '📥',
+      'out': '📤',
+      'adjustment': '⚖️'
     };
-    
-    setShowQRModal(qrData);
+    return icons[type] || '❓';
   };
 
-  const getLastOccupiedText = (lastOccupied) => {
-    if (!lastOccupied) return 'Mai';
-    
+  const getTypeLabel = (type) => {
+    const labels = {
+      'in': 'Entrata',
+      'out': 'Uscita',
+      'adjustment': 'Rettifica'
+    };
+    return labels[type] || type;
+  };
+
+  const getTypeColor = (type) => {
+    const colors = {
+      'in': 'success',
+      'out': 'warning',
+      'adjustment': 'info'
+    };
+    return colors[type] || 'secondary';
+  };
+
+  const getReferenceIcon = (reference_type) => {
+    const icons = {
+      'order': '🛒',
+      'supplier': '📦',
+      'manual': '✋'
+    };
+    return icons[reference_type] || '📄';
+  };
+
+  const getReferenceLabel = (reference_type) => {
+    const labels = {
+      'order': 'Ordine',
+      'supplier': 'Fornitore',
+      'manual': 'Manuale'
+    };
+    return labels[reference_type] || reference_type;
+  };
+
+  const formatCurrency = (amount) => {
+    if (!amount) return '-';
+    return new Intl.NumberFormat('it-IT', {
+      style: 'currency',
+      currency: 'EUR'
+    }).format(amount);
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleString('it-IT', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getTimeAgo = (dateString) => {
     const now = new Date();
-    const occupiedDate = new Date(lastOccupied);
-    const diffTime = Math.abs(now - occupiedDate);
-    const diffMinutes = Math.ceil(diffTime / (1000 * 60));
-    const diffHours = Math.ceil(diffTime / (1000 * 60 * 60));
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffMinutes < 60) return `${diffMinutes} min fa`;
+    const date = new Date(dateString);
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) return `${diffMins}m fa`;
     if (diffHours < 24) return `${diffHours}h fa`;
-    if (diffDays <= 7) return `${diffDays} giorni fa`;
-    return occupiedDate.toLocaleDateString('it-IT');
+    if (diffDays < 7) return `${diffDays}g fa`;
+    return formatDate(dateString);
   };
-
-  const getTotalCapacity = () => {
-    return stats.totalCapacity || 0;
-  };
-
-  const getAvailableCapacity = () => {
-    return stats.availableCapacity || 0;
-  };
-
-  const areas = [...new Set(tables.map(t => t.location))].filter(Boolean);
-  const statuses = [...new Set(tables.map(t => mapDbStatusToFrontend(t.status)))];
 
   if (loading) {
     return (
-      <div className="tables-section">
+      <div className="stock-movements-section">
         <div className="loading-spinner">
           <div className="spinner"></div>
-          <p>Caricamento tavoli...</p>
+          <p>Caricamento movimenti stock...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="tables-section">
+    <div className="stock-movements-section">
       {/* Header */}
       <div className="section-header">
-        <div>
-          <h2>🪑 Gestione Tavoli</h2>
+        <div className="header-left">
+          <h2>📊 Movimenti Stock</h2>
           <p className="section-subtitle">
-            {stats.total || 0} tavoli • {stats.free || 0} liberi • 
-            {getAvailableCapacity()}/{getTotalCapacity()} posti disponibili
+            {stats.total_movements || 0} movimenti totali • {stats.today || 0} oggi • 
+            {stats.affected_products || 0} prodotti interessati
           </p>
         </div>
         <div className="header-actions">
-          <div className="view-toggle">
-            <button 
-              className={`btn-toggle ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => setViewMode('grid')}
-              title="Vista griglia"
-            >
-              ⊞
-            </button>
-            <button 
-              className={`btn-toggle ${viewMode === 'list' ? 'active' : ''}`}
-              onClick={() => setViewMode('list')}
-              title="Vista lista"
-            >
-              ☰
-            </button>
-          </div>
+          <button 
+            className="btn secondary refresh-btn"
+            onClick={() => {
+              fetchMovements();
+              fetchStats();
+            }}
+            title="Aggiorna movimenti"
+          >
+            🔄 Aggiorna
+          </button>
           <button 
             className="btn primary" 
             onClick={() => setShowAddModal(true)}
           >
-            + Aggiungi Tavolo
+            + Nuovo Movimento
           </button>
         </div>
       </div>
 
       {/* Statistiche rapide */}
-      <div className="tables-stats">
+      <div className="movement-stats">
         <div className="stat-card mini success">
-          <span className="stat-icon">🟢</span>
+          <span className="stat-icon">📥</span>
           <div>
-            <div className="stat-number">{stats.free || 0}</div>
-            <div className="stat-label">Liberi</div>
-          </div>
-        </div>
-        <div className="stat-card mini danger">
-          <span className="stat-icon">🔴</span>
-          <div>
-            <div className="stat-number">{stats.occupied || 0}</div>
-            <div className="stat-label">Occupati</div>
+            <div className="stat-number">{stats.entries || 0}</div>
+            <div className="stat-label">Entrate</div>
           </div>
         </div>
         <div className="stat-card mini warning">
-          <span className="stat-icon">🟡</span>
+          <span className="stat-icon">📤</span>
           <div>
-            <div className="stat-number">{stats.reserved || 0}</div>
-            <div className="stat-label">Riservati</div>
+            <div className="stat-number">{stats.exits || 0}</div>
+            <div className="stat-label">Uscite</div>
           </div>
         </div>
         <div className="stat-card mini info">
-          <span className="stat-icon">🔵</span>
+          <span className="stat-icon">⚖️</span>
           <div>
-            <div className="stat-number">{stats.cleaning || 0}</div>
-            <div className="stat-label">Pulizia</div>
+            <div className="stat-number">{stats.adjustments || 0}</div>
+            <div className="stat-label">Rettifiche</div>
           </div>
         </div>
         <div className="stat-card mini secondary">
-          <span className="stat-icon">👥</span>
+          <span className="stat-icon">💰</span>
           <div>
-            <div className="stat-number">{getTotalCapacity()}</div>
-            <div className="stat-label">Posti Tot.</div>
+            <div className="stat-number">{formatCurrency(stats.total_value_in)}</div>
+            <div className="stat-label">Valore Entrate</div>
+          </div>
+        </div>
+        <div className="stat-card mini secondary">
+          <span className="stat-icon">📉</span>
+          <div>
+            <div className="stat-number">{formatCurrency(stats.total_value_out)}</div>
+            <div className="stat-label">Valore Uscite</div>
           </div>
         </div>
       </div>
@@ -332,61 +283,76 @@ export default function TablesSection() {
         <div className="search-container">
           <input
             type="text"
-            placeholder="Cerca tavolo per numero, note, QR..."
+            placeholder="Cerca per prodotto, variante, motivo..."
             className="search-input"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={filters.search}
+            onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
           />
           <span className="search-icon">🔍</span>
         </div>
-        
-        <select 
+
+        <select
+          value={filters.type}
+          onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value }))}
           className="filter-select"
-          value={filterArea}
-          onChange={(e) => setFilterArea(e.target.value)}
         >
-          <option value="">Tutte le aree</option>
-          {areas.map(area => (
-            <option key={area} value={area}>
-              {area === 'interno' ? '🏠 Interno' : '🌿 Esterno'}
+          <option value="all">Tutti i tipi</option>
+          <option value="in">📥 Entrate</option>
+          <option value="out">📤 Uscite</option>
+          <option value="adjustment">⚖️ Rettifiche</option>
+        </select>
+
+        <select
+          value={filters.reference_type}
+          onChange={(e) => setFilters(prev => ({ ...prev, reference_type: e.target.value }))}
+          className="filter-select"
+        >
+          <option value="all">Tutti i riferimenti</option>
+          <option value="manual">✋ Manuale</option>
+          <option value="order">🛒 Ordine</option>
+          <option value="supplier">📦 Fornitore</option>
+        </select>
+
+        <select
+          value={filters.product_id}
+          onChange={(e) => setFilters(prev => ({ ...prev, product_id: e.target.value }))}
+          className="filter-select"
+        >
+          <option value="all">Tutti i prodotti</option>
+          {products.map(product => (
+            <option key={product.product_id} value={product.product_id}>
+              {product.product_name}
             </option>
           ))}
         </select>
 
-        <select 
-          className="filter-select"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-        >
-          <option value="">Tutti gli stati</option>
-          {statuses.map(status => (
-            <option key={status} value={status}>
-              {getStatusIcon(status)} {getStatusLabel(status)}
-            </option>
-          ))}
-        </select>
+        <input
+          type="date"
+          value={filters.date_from}
+          onChange={(e) => setFilters(prev => ({ ...prev, date_from: e.target.value }))}
+          className="filter-date"
+          title="Data da"
+        />
 
-        <select 
-          className="filter-select"
-          value={filterCapacity}
-          onChange={(e) => setFilterCapacity(e.target.value)}
-        >
-          <option value="">Tutte le capacità</option>
-          <option value="1-2">👥 1-2 posti</option>
-          <option value="3-4">👨‍👩‍👧 3-4 posti</option>
-          <option value="5-6">👨‍👩‍👧‍👦 5-6 posti</option>
-          <option value="7+">🏢 7+ posti</option>
-        </select>
+        <input
+          type="date"
+          value={filters.date_to}
+          onChange={(e) => setFilters(prev => ({ ...prev, date_to: e.target.value }))}
+          className="filter-date"
+          title="Data a"
+        />
 
-        {(searchTerm || filterArea || filterStatus || filterCapacity) && (
+        {Object.values(filters).some(v => v && v !== 'all') && (
           <button 
             className="btn secondary clear-filters"
-            onClick={() => {
-              setSearchTerm("");
-              setFilterArea("");
-              setFilterStatus("");
-              setFilterCapacity("");
-            }}
+            onClick={() => setFilters({
+              search: '',
+              type: 'all',
+              reference_type: 'all',
+              date_from: '',
+              date_to: '',
+              product_id: 'all'
+            })}
           >
             Pulisci Filtri
           </button>
@@ -402,376 +368,202 @@ export default function TablesSection() {
         </div>
       )}
 
-      {/* Vista Tavoli */}
-      {filteredTables.length === 0 ? (
+      {/* Tabella movimenti */}
+      {filteredMovements.length === 0 ? (
         <div className="empty-state">
-          <span className="empty-icon">🪑</span>
-          <h3>Nessun tavolo trovato</h3>
+          <span className="empty-icon">📊</span>
+          <h3>Nessun movimento trovato</h3>
           <p>
-            {tables.length === 0 
-              ? "Inizia aggiungendo il primo tavolo"
+            {movements.length === 0 
+              ? "Inizia registrando il primo movimento di stock"
               : "Prova a modificare i filtri di ricerca"
             }
           </p>
-          {tables.length === 0 && (
-            <button 
-              className="btn primary"
-              onClick={() => setShowAddModal(true)}
-            >
-              Aggiungi Primo Tavolo
-            </button>
-          )}
+          <button 
+            className="btn primary"
+            onClick={() => setShowAddModal(true)}
+          >
+            + Primo Movimento
+          </button>
         </div>
       ) : (
-        <>
-          {viewMode === 'grid' ? (
-            /* Vista Griglia */
-            <div className="tables-grid">
-              {filteredTables.map(table => (
-                <div key={table.id} className={`table-card ${mapDbStatusToFrontend(table.status)}`}>
-                  <div className="table-header">
-                    <div className="table-title">
-                      <h3>Tavolo {table.number}</h3>
-                      <span className="capacity-badge">
-                        {getCapacityIcon(table.capacity)} {table.capacity}
-                      </span>
-                    </div>
-                    <span className={`status-badge ${getStatusColor(table.status)}`}>
-                      {getStatusIcon(table.status)} {getStatusLabel(table.status)}
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Prodotto</th>
+                <th>Quantità</th>
+                <th>Costo</th>
+                <th>Motivo</th>
+                <th>Riferimento</th>
+                <th>Data</th>
+                <th>Utente</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredMovements.map(movement => (
+                <tr key={movement.id} className={`movement-row ${movement.type}`}>
+                  <td>
+                    <span className={`type-badge ${getTypeColor(movement.type)}`}>
+                      {getTypeIcon(movement.type)} {getTypeLabel(movement.type)}
                     </span>
-                  </div>
-                  
-                  <div className="table-info">
-                    <div className="info-item">
-                      <span className="label">Area:</span>
-                      <span className="value">
-                        {table.location === 'interno' ? '🏠 Interno' : '🌿 Esterno'}
+                  </td>
+                  <td>
+                    <div className="product-info">
+                      <div className="product-name">{movement.product_name}</div>
+                      <div className="variant-name">{movement.variant_name}</div>
+                      <div className="category-name">{movement.category_name}</div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`quantity ${parseFloat(movement.quantity) >= 0 ? 'positive' : 'negative'}`}>
+                      {movement.type === 'out' ? '-' : '+'}{Math.abs(movement.quantity)}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="cost-info">
+                      <div className="unit-cost">
+                        {movement.cost_per_unit ? formatCurrency(movement.cost_per_unit) : '-'}
+                      </div>
+                      <div className="total-cost">
+                        {formatCurrency(movement.total_cost)}
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="reason">{movement.reason || '-'}</span>
+                  </td>
+                  <td>
+                    <div className="reference-info">
+                      <span className={`reference-badge ${movement.reference_type}`}>
+                        {getReferenceIcon(movement.reference_type)} {getReferenceLabel(movement.reference_type)}
                       </span>
-                    </div>
-                    <div className="info-item">
-                      <span className="label">QR Code:</span>
-                      <span className="value">{table.qr_code}</span>
-                    </div>
-                    <div className="info-item">
-                      <span className="label">Ultimo uso:</span>
-                      <span className="value">{getLastOccupiedText(table.lastOccupied)}</span>
-                    </div>
-                    {table.currentOrder && (
-                      <div className="info-item current-order">
-                        <span className="label">Ordine:</span>
-                        <span className="value">
-                          #{table.currentOrder.id} • {table.currentOrder.items} articoli • €{table.currentOrder.total}
-                        </span>
-                      </div>
-                    )}
-                    {table.notes && (
-                      <div className="table-notes">
-                        <span className="notes-icon">📝</span>
-                        <span className="notes-text">{table.notes}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="table-actions">
-                    {/* Azioni cambio stato */}
-                    <div className="status-actions">
-                      {table.status !== 'free' && (
-                        <button 
-                          className="btn-small success"
-                          onClick={() => changeTableStatus(table.id, 'libero')}
-                          title="Libera tavolo"
-                        >
-                          🟢
-                        </button>
-                      )}
-                      {table.status !== 'occupied' && (
-                        <button 
-                          className="btn-small danger"
-                          onClick={() => changeTableStatus(table.id, 'occupato')}
-                          title="Segna come occupato"
-                        >
-                          🔴
-                        </button>
-                      )}
-                      {table.status !== 'reserved' && (
-                        <button 
-                          className="btn-small warning"
-                          onClick={() => changeTableStatus(table.id, 'riservato')}
-                          title="Segna come riservato"
-                        >
-                          🟡
-                        </button>
-                      )}
-                      {table.status !== 'cleaning' && (
-                        <button 
-                          className="btn-small info"
-                          onClick={() => changeTableStatus(table.id, 'pulizia')}
-                          title="Segna per pulizia"
-                        >
-                          🔵
-                        </button>
+                      {movement.reference_id && (
+                        <div className="reference-id">#{movement.reference_id}</div>
                       )}
                     </div>
-
-                    {/* Azioni generali */}
-                    <div className="general-actions">
+                  </td>
+                  <td>
+                    <div className="date-info">
+                      <div className="date">{getTimeAgo(movement.created_at)}</div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="user-name">{movement.user_name || 'Sistema'}</span>
+                  </td>
+                  <td>
+                    <div className="action-buttons">
                       <button 
-                        className="btn-small primary"
-                        onClick={() => setEditingTable(table)}
-                        title="Modifica tavolo"
+                        className="btn-small secondary"
+                        onClick={() => setEditingMovement(movement)}
+                        title="Modifica note"
                       >
                         ✏️
                       </button>
                       <button 
-                        className="btn-small secondary"
-                        onClick={() => generateQRCode(table)}
-                        title="Mostra QR Code"
-                      >
-                        📱
-                      </button>
-                      <button 
                         className="btn-small danger"
-                        onClick={() => deleteTable(table.id)}
-                        title="Elimina tavolo"
-                        disabled={table.status === 'occupied'}
+                        onClick={() => handleDeleteMovement(movement.id, movement.product_name)}
+                        title="Elimina movimento"
                       >
                         🗑️
                       </button>
                     </div>
-                  </div>
-                </div>
+                  </td>
+                </tr>
               ))}
-            </div>
-          ) : (
-            /* Vista Lista */
-            <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Tavolo</th>
-                    <th>Capacità</th>
-                    <th>Area</th>
-                    <th>Stato</th>
-                    <th>Ultimo Uso</th>
-                    <th>Note</th>
-                    <th>Azioni</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTables.map(table => (
-                    <tr key={table.id} className={`table-row ${mapDbStatusToFrontend(table.status)}`}>
-                      <td>
-                        <div className="table-cell-info">
-                          <strong>Tavolo {table.number}</strong>
-                          <div className="table-meta">
-                            QR: {table.qr_code}
-                            {table.currentOrder && (
-                              <span className="current-order-badge">
-                                Ordine #{table.currentOrder.id}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="capacity-display">
-                          {getCapacityIcon(table.capacity)} {table.capacity}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="area-badge">
-                          {table.location === 'interno' ? '🏠 Interno' : '🌿 Esterno'}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`status-badge ${getStatusColor(table.status)}`}>
-                          {getStatusIcon(table.status)} {getStatusLabel(table.status)}
-                        </span>
-                      </td>
-                      <td className="last-occupied">
-                        {getLastOccupiedText(table.lastOccupied)}
-                      </td>
-                      <td>
-                        <div className="notes-cell">
-                          {table.notes || <span className="text-muted">-</span>}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <div className="status-actions">
-                            {table.status !== 'free' && (
-                              <button 
-                                className="btn-small success"
-                                onClick={() => changeTableStatus(table.id, 'libero')}
-                                title="Libera"
-                              >
-                                🟢
-                              </button>
-                            )}
-                            {table.status !== 'occupied' && (
-                              <button 
-                                className="btn-small danger"
-                                onClick={() => changeTableStatus(table.id, 'occupato')}
-                                title="Occupato"
-                              >
-                                🔴
-                              </button>
-                            )}
-                          </div>
-                          <button 
-                            className="btn-small primary"
-                            onClick={() => setEditingTable(table)}
-                            title="Modifica"
-                          >
-                            ✏️
-                          </button>
-                          <button 
-                            className="btn-small secondary"
-                            onClick={() => generateQRCode(table)}
-                            title="QR Code"
-                          >
-                            📱
-                          </button>
-                          <button 
-                            className="btn-small danger"
-                            onClick={() => deleteTable(table.id)}
-                            title="Elimina"
-                            disabled={table.status === 'occupied'}
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
+            </tbody>
+          </table>
+        </div>
       )}
 
-      {/* Modal Aggiungi/Modifica Tavolo */}
-      {(showAddModal || editingTable) && (
-        <TableModal
-          table={editingTable}
-          onClose={() => {
-            setShowAddModal(false);
-            setEditingTable(null);
-          }}
+      {/* Modal Nuovo Movimento */}
+      {showAddModal && (
+        <MovementModal
+          onClose={() => setShowAddModal(false)}
           onSave={() => {
             setShowAddModal(false);
-            setEditingTable(null);
-            fetchTables();
+            fetchMovements();
+            fetchStats();
           }}
-          existingNumbers={tables.filter(t => t.id !== editingTable?.id).map(t => t.number)}
+          products={products}
         />
       )}
 
-      {/* Modal QR Code */}
-      {showQRModal && (
-        <QRCodeModal
-          qrData={showQRModal}
-          onClose={() => setShowQRModal(null)}
+      {/* Modal Modifica Movimento */}
+      {editingMovement && (
+        <EditMovementModal
+          movement={editingMovement}
+          onClose={() => setEditingMovement(null)}
+          onSave={() => {
+            setEditingMovement(null);
+            fetchMovements();
+          }}
         />
       )}
     </div>
   );
 }
 
-// Modal per aggiungere/modificare tavolo
-function TableModal({ table, onClose, onSave, existingNumbers }) {
+// Modal per nuovo movimento
+function MovementModal({ onClose, onSave, products }) {
   const [formData, setFormData] = useState({
-    number: table?.number || '',
-    capacity: table?.capacity || 4,
-    location: table?.location || 'interno',
-    status: table?.status ? mapDbStatusToFrontend(table.status) : 'libero',
-    notes: table?.notes || '',
-    qr_code: table?.qr_code || '',
-    active: table?.active !== undefined ? table.active : true
+    product_variant_id: '',
+    type: 'in',
+    quantity: '',
+    reason: '',
+    reference_type: 'manual',
+    reference_id: '',
+    cost_per_unit: '',
+    notes: '',
+    auto_update_stock: true
   });
-  const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
 
-  const mapDbStatusToFrontend = (dbStatus) => {
-    const mapping = {
-      'free': 'libero',
-      'occupied': 'occupato',
-      'reserved': 'riservato',
-      'cleaning': 'pulizia'
-    };
-    return mapping[dbStatus] || dbStatus;
-  };
-
-  useEffect(() => {
-    // Genera QR code automaticamente se è un nuovo tavolo
-    if (!table && !formData.qr_code && formData.number) {
-      setFormData(prev => ({
-        ...prev,
-        qr_code: `QR${String(formData.number).padStart(3, '0')}`
-      }));
-    }
-  }, [formData.number, table]);
-
-  const validateForm = () => {
-    const newErrors = {};
-
-    if (!formData.number) {
-      newErrors.number = 'Numero tavolo è obbligatorio';
-    } else if (existingNumbers.includes(parseInt(formData.number))) {
-      newErrors.number = 'Numero tavolo già esistente';
-    } else if (formData.number < 1 || formData.number > 999) {
-      newErrors.number = 'Numero tavolo deve essere tra 1 e 999';
-    }
-
-    if (!formData.capacity || formData.capacity < 1 || formData.capacity > 20) {
-      newErrors.capacity = 'Capacità deve essere tra 1 e 20 posti';
-    }
-
-    if (!formData.qr_code.trim()) {
-      newErrors.qr_code = 'Codice QR è obbligatorio';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!validateForm()) return;
+    if (!formData.product_variant_id || !formData.quantity) {
+      setError('Prodotto e quantità sono obbligatori');
+      return;
+    }
 
-    setSaving(true);
-    
+    setLoading(true);
+    setError(null);
+
     try {
-      const url = table 
-        ? `http://localhost:3000/api/tables/${table.id}`
-        : 'http://localhost:3000/api/tables';
-      
-      const method = table ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
+      const response = await fetch('http://localhost:3000/api/stock-movements', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          ...formData,
-          number: parseInt(formData.number),
-          capacity: parseInt(formData.capacity)
-        })
+        body: JSON.stringify(formData)
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Errore nel salvataggio');
+        throw new Error(errorData.error || 'Errore nella creazione movimento');
       }
 
       onSave();
     } catch (err) {
-      alert(`Errore: ${err.message}`);
+      setError(err.message);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
+  };
+
+  const handleProductChange = (variantId) => {
+    const product = products.find(p => p.variant_id == variantId);
+    setSelectedProduct(product);
+    setFormData(prev => ({
+      ...prev,
+      product_variant_id: variantId,
+      cost_per_unit: product?.cost_per_unit || ''
+    }));
   };
 
   const handleChange = (e) => {
@@ -780,140 +572,176 @@ function TableModal({ table, onClose, onSave, existingNumbers }) {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
-    
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: null }));
-    }
   };
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content table-modal">
+      <div className="modal-content large">
         <div className="modal-header">
-          <h3 className="modal-title">
-            {table ? `Modifica Tavolo ${table.number}` : 'Nuovo Tavolo'}
-          </h3>
+          <h3>Nuovo Movimento Stock</h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            <div className="form-row">
+            {error && <div className="error-message">❌ {error}</div>}
+            
+            <div className="form-grid">
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Prodotto/Variante *</label>
+                  <select
+                    name="product_variant_id"
+                    value={formData.product_variant_id}
+                    onChange={(e) => handleProductChange(e.target.value)}
+                    className="form-select"
+                    required
+                  >
+                    <option value="">Seleziona prodotto</option>
+                    {products.map(product => (
+                      <option key={product.variant_id} value={product.variant_id}>
+                        {product.product_name} - {product.variant_name} 
+                        {product.category_name && ` (${product.category_name})`}
+                        {product.current_stock !== null && ` | Stock: ${product.current_stock}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Tipo Movimento *</label>
+                  <select
+                    name="type"
+                    value={formData.type}
+                    onChange={handleChange}
+                    className="form-select"
+                    required
+                  >
+                    <option value="in">📥 Entrata</option>
+                    <option value="out">📤 Uscita</option>
+                    <option value="adjustment">⚖️ Rettifica</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Quantità *</label>
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={formData.quantity}
+                    onChange={handleChange}
+                    className="form-input"
+                    step="0.01"
+                    required
+                  />
+                  <small className="form-help">
+                    {formData.type === 'adjustment' && "Per le rettifiche: valore positivo = aumento, negativo = diminuzione"}
+                  </small>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Costo per Unità (€)</label>
+                  <input
+                    type="number"
+                    name="cost_per_unit"
+                    value={formData.cost_per_unit}
+                    onChange={handleChange}
+                    className="form-input"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Tipo Riferimento</label>
+                  <select
+                    name="reference_type"
+                    value={formData.reference_type}
+                    onChange={handleChange}
+                    className="form-select"
+                  >
+                    <option value="manual">✋ Manuale</option>
+                    <option value="order">🛒 Ordine</option>
+                    <option value="supplier">📦 Fornitore</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">ID Riferimento</label>
+                  <input
+                    type="number"
+                    name="reference_id"
+                    value={formData.reference_id}
+                    onChange={handleChange}
+                    className="form-input"
+                    placeholder="Es. 123"
+                  />
+                </div>
+              </div>
+
               <div className="form-group">
-                <label className="form-label">Numero Tavolo *</label>
+                <label className="form-label">Motivo</label>
                 <input
-                  type="number"
-                  name="number"
-                  className={`form-input ${errors.number ? 'error' : ''}`}
-                  value={formData.number}
+                  type="text"
+                  name="reason"
+                  value={formData.reason}
                   onChange={handleChange}
-                  min="1"
-                  max="999"
-                  required
+                  className="form-input"
+                  placeholder="Es. Carico merce, Vendita, Scadenza, Inventario..."
                 />
-                {errors.number && <span className="error-message">{errors.number}</span>}
               </div>
 
               <div className="form-group">
-                <label className="form-label">Capacità *</label>
-                <input
-                  type="number"
-                  name="capacity"
-                  className={`form-input ${errors.capacity ? 'error' : ''}`}
-                  value={formData.capacity}
+                <label className="form-label">Note</label>
+                <textarea
+                  name="notes"
+                  value={formData.notes}
                   onChange={handleChange}
-                  min="1"
-                  max="20"
-                  required
+                  className="form-textarea"
+                  rows="3"
+                  placeholder="Note aggiuntive..."
                 />
-                {errors.capacity && <span className="error-message">{errors.capacity}</span>}
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Area *</label>
-                <select
-                  name="location"
-                  className="form-select"
-                  value={formData.location}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value="interno">🏠 Interno</option>
-                  <option value="esterno">🌿 Esterno</option>
-                </select>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Stato *</label>
-                <select
-                  name="status"
-                  className="form-select"
-                  value={formData.status}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value="libero">🟢 Libero</option>
-                  <option value="occupato">🔴 Occupato</option>
-                  <option value="riservato">🟡 Riservato</option>
-                  <option value="pulizia">🔵 Pulizia</option>
-                </select>
+              <div className="form-checkbox-group">
+                <label className="form-checkbox">
+                  <input
+                    type="checkbox"
+                    name="auto_update_stock"
+                    checked={formData.auto_update_stock}
+                    onChange={handleChange}
+                  />
+                  <span className="checkmark"></span>
+                  Aggiorna automaticamente lo stock
+                </label>
+                <small className="form-help">
+                  Disabilita solo se gestisci lo stock manualmente o in caso di test
+                </small>
               </div>
-            </div>
 
-            <div className="form-group">
-              <label className="form-label">Codice QR *</label>
-              <input
-                type="text"
-                name="qr_code"
-                className={`form-input ${errors.qr_code ? 'error' : ''}`}
-                value={formData.qr_code}
-                onChange={handleChange}
-                placeholder="QR001"
-                required
-              />
-              {errors.qr_code && <span className="error-message">{errors.qr_code}</span>}
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Note</label>
-              <textarea
-                name="notes"
-                className="form-textarea"
-                value={formData.notes}
-                onChange={handleChange}
-                rows="3"
-                placeholder="Note aggiuntive sul tavolo..."
-              />
-            </div>
-
-            <div className="form-checkbox">
-              <input
-                type="checkbox"
-                name="active"
-                checked={formData.active}
-                onChange={handleChange}
-              />
-              <label className="checkbox-label">Tavolo attivo</label>
+              {selectedProduct && (
+                <div className="product-preview">
+                  <h4>📋 Informazioni Prodotto</h4>
+                  <div className="product-details">
+                    <div><strong>Stock attuale:</strong> {selectedProduct.current_stock || 0} {selectedProduct.unit || 'pcs'}</div>
+                    <div><strong>Costo/Unità:</strong> {selectedProduct.cost_per_unit ? formatCurrency(selectedProduct.cost_per_unit) : 'Non definito'}</div>
+                    <div><strong>Categoria:</strong> {selectedProduct.category_name || 'Nessuna'}</div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="modal-actions">
-            <button 
-              type="button" 
-              className="btn secondary" 
-              onClick={onClose}
-              disabled={saving}
-            >
+            <button type="button" className="btn secondary" onClick={onClose}>
               Annulla
             </button>
-            <button 
-              type="submit" 
-              className="btn primary"
-              disabled={saving}
-            >
-              {saving ? 'Salvando...' : (table ? 'Aggiorna' : 'Crea Tavolo')}
+            <button type="submit" className="btn primary" disabled={loading}>
+              {loading ? 'Salvando...' : 'Crea Movimento'}
             </button>
           </div>
         </form>
@@ -922,65 +750,103 @@ function TableModal({ table, onClose, onSave, existingNumbers }) {
   );
 }
 
-// Modal QR Code (rimane uguale)
-function QRCodeModal({ qrData, onClose }) {
-  const downloadQR = () => {
-    alert('Funzione di download QR code non ancora implementata');
+// Modal per modifica movimento (solo note e motivo)
+function EditMovementModal({ movement, onClose, onSave }) {
+  const [formData, setFormData] = useState({
+    reason: movement.reason || '',
+    notes: movement.notes || ''
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`http://localhost:3000/api/stock-movements/${movement.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(formData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Errore nell\'aggiornamento');
+      }
+
+      onSave();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const printQR = () => {
-    window.print();
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content qr-modal">
+      <div className="modal-content">
         <div className="modal-header">
-          <h3 className="modal-title">
-            QR Code Tavolo {qrData.tableNumber}
-          </h3>
+          <h3>Modifica Movimento #{movement.id}</h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
-        <div className="qr-content">
-          <div className="qr-code-display">
-            <div className="qr-placeholder">
-              <div className="qr-code-fake"></div>
-              <p>QR CODE</p>
-              <p>Tavolo {qrData.tableNumber}</p>
-            </div>
-          </div>
-          
-          <div className="qr-info">
-            <h4>Informazioni QR Code</h4>
-            <div className="qr-details">
-              <div className="detail-row">
-                <span>Tavolo:</span>
-                <span>{qrData.tableNumber}</span>
-              </div>
-              <div className="detail-row">
-                <span>ID Tavolo:</span>
-                <span>{qrData.tableId}</span>
-              </div>
-              <div className="detail-row">
-                <span>URL:</span>
-                <span className="url">{qrData.pubUrl}</span>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            {error && <div className="error-message">❌ {error}</div>}
+            
+            <div className="movement-info">
+              <h4>📋 Dettagli Movimento</h4>
+              <div className="movement-details">
+                <div><strong>Prodotto:</strong> {movement.product_name} - {movement.variant_name}</div>
+                <div><strong>Tipo:</strong> {movement.type_display}</div>
+                <div><strong>Quantità:</strong> {movement.quantity}</div>
+                <div><strong>Data:</strong> {formatDate(movement.created_at)}</div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div className="modal-actions">
-          <button className="btn secondary" onClick={onClose}>
-            Chiudi
-          </button>
-          <button className="btn info" onClick={printQR}>
-            🖨️ Stampa
-          </button>
-          <button className="btn primary" onClick={downloadQR}>
-            📥 Scarica
-          </button>
-        </div>
+            <div className="form-group">
+              <label className="form-label">Motivo</label>
+              <input
+                type="text"
+                name="reason"
+                value={formData.reason}
+                onChange={handleChange}
+                className="form-input"
+                placeholder="Motivo del movimento..."
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Note</label>
+              <textarea
+                name="notes"
+                value={formData.notes}
+                onChange={handleChange}
+                className="form-textarea"
+                rows="3"
+                placeholder="Note aggiuntive..."
+              />
+            </div>
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn secondary" onClick={onClose}>
+              Annulla
+            </button>
+            <button type="submit" className="btn primary" disabled={loading}>
+              {loading ? 'Salvando...' : 'Aggiorna'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

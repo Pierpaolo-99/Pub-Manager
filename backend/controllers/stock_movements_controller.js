@@ -9,13 +9,25 @@ function getAllStockMovements(req, res) {
         user_id, 
         date_from, 
         date_to,
+        reason,
         limit = 100,
         offset = 0 
     } = req.query;
     
     let sql = `
         SELECT 
-            sm.*,
+            sm.id,
+            sm.product_variant_id,
+            sm.type,
+            sm.quantity,
+            sm.reason,
+            sm.reference_id,
+            sm.reference_type,
+            sm.cost_per_unit,
+            sm.total_cost,
+            sm.notes,
+            sm.user_id,
+            sm.created_at,
             pv.name as variant_name,
             p.name as product_name,
             p.id as product_id,
@@ -23,7 +35,7 @@ function getAllStockMovements(req, res) {
             u.username as user_name,
             CASE 
                 WHEN sm.type = 'in' THEN '📥 Entrata'
-                WHEN sm.type = 'out' THEN '📤 Uscita'
+                WHEN sm.type = 'out' THEN '📤 Uscita'  
                 WHEN sm.type = 'adjustment' THEN '⚖️ Rettifica'
                 ELSE sm.type
             END as type_display
@@ -58,14 +70,19 @@ function getAllStockMovements(req, res) {
         params.push(user_id);
     }
     
+    if (reason) {
+        sql += ` AND sm.reason LIKE ?`;
+        params.push(`%${reason}%`);
+    }
+    
     if (date_from) {
-        sql += ` AND sm.created_at >= ?`;
+        sql += ` AND DATE(sm.created_at) >= ?`;
         params.push(date_from);
     }
     
     if (date_to) {
-        sql += ` AND sm.created_at <= ?`;
-        params.push(date_to + ' 23:59:59');
+        sql += ` AND DATE(sm.created_at) <= ?`;
+        params.push(date_to);
     }
     
     sql += ` ORDER BY sm.created_at DESC LIMIT ? OFFSET ?`;
@@ -77,7 +94,7 @@ function getAllStockMovements(req, res) {
             return res.status(500).json({ error: 'Errore nel caricamento movimenti' });
         }
         
-        // Calcola statistiche
+        // Calcola statistiche per i risultati correnti
         const stats = calculateMovementStats(results);
         
         res.json({
@@ -94,7 +111,7 @@ function getAllStockMovements(req, res) {
 
 // GET statistiche movimenti
 function getMovementStats(req, res) {
-    const { date_from, date_to } = req.query;
+    const { date_from, date_to, type, reference_type } = req.query;
     
     let sql = `
         SELECT 
@@ -107,21 +124,32 @@ function getMovementStats(req, res) {
             SUM(CASE WHEN type = 'in' THEN total_cost ELSE 0 END) as value_in,
             SUM(CASE WHEN type = 'out' THEN total_cost ELSE 0 END) as value_out,
             COUNT(DISTINCT product_variant_id) as affected_products,
-            COUNT(DISTINCT user_id) as active_users
+            COUNT(DISTINCT user_id) as active_users,
+            AVG(CASE WHEN cost_per_unit IS NOT NULL THEN cost_per_unit END) as avg_cost_per_unit
         FROM stock_movements
         WHERE 1=1
     `;
     
     const params = [];
     
+    if (type && type !== 'all') {
+        sql += ` AND type = ?`;
+        params.push(type);
+    }
+    
+    if (reference_type && reference_type !== 'all') {
+        sql += ` AND reference_type = ?`;
+        params.push(reference_type);
+    }
+    
     if (date_from) {
-        sql += ` AND created_at >= ?`;
+        sql += ` AND DATE(created_at) >= ?`;
         params.push(date_from);
     }
     
     if (date_to) {
-        sql += ` AND created_at <= ?`;
-        params.push(date_to + ' 23:59:59');
+        sql += ` AND DATE(created_at) <= ?`;
+        params.push(date_to);
     }
     
     connection.query(sql, params, (err, results) => {
@@ -142,13 +170,13 @@ function createStockMovement(req, res) {
         quantity,
         reason,
         reference_id,
-        reference_type,
+        reference_type = 'manual',
         cost_per_unit,
         notes,
         auto_update_stock = true
     } = req.body;
     
-    const user_id = req.user?.id; // Dall'autenticazione
+    const user_id = req.user?.id || null;
     
     // Validazione
     if (!product_variant_id || !type || !quantity) {
@@ -159,7 +187,13 @@ function createStockMovement(req, res) {
     
     if (!['in', 'out', 'adjustment'].includes(type)) {
         return res.status(400).json({ 
-            error: 'Tipo movimento non valido' 
+            error: 'Tipo movimento non valido. Usa: in, out, adjustment' 
+        });
+    }
+    
+    if (!['order', 'manual', 'supplier'].includes(reference_type)) {
+        return res.status(400).json({ 
+            error: 'Tipo riferimento non valido. Usa: order, manual, supplier' 
         });
     }
     
@@ -184,14 +218,14 @@ function createStockMovement(req, res) {
         const movementParams = [
             product_variant_id,
             type,
-            quantity,
+            parseFloat(quantity),
             reason || null,
             reference_id || null,
-            reference_type || 'manual',
-            cost_per_unit || null,
-            total_cost || null,
+            reference_type,
+            cost_per_unit ? parseFloat(cost_per_unit) : null,
+            total_cost,
             notes || null,
-            user_id || null
+            user_id
         ];
         
         connection.query(insertMovementSql, movementParams, (err, movementResult) => {
@@ -223,6 +257,7 @@ function createStockMovement(req, res) {
                             });
                         }
                         
+                        console.log(`✅ Movement created: ${movementId} (${type})`);
                         res.status(201).json({
                             id: movementId,
                             message: 'Movimento creato con successo',
@@ -240,6 +275,7 @@ function createStockMovement(req, res) {
                         });
                     }
                     
+                    console.log(`✅ Movement created: ${movementId} (${type}) - no stock update`);
                     res.status(201).json({
                         id: movementId,
                         message: 'Movimento creato con successo',
@@ -251,15 +287,15 @@ function createStockMovement(req, res) {
     });
 }
 
-// PUT aggiornamento movimento
+// PUT aggiornamento movimento (limitato)
 function updateStockMovement(req, res) {
     const { id } = req.params;
     const { reason, notes } = req.body;
     
-    // Solo alcuni campi sono modificabili dopo la creazione
+    // Solo alcuni campi sono modificabili dopo la creazione per evitare inconsistenze
     const sql = `
         UPDATE stock_movements 
-        SET reason = ?, notes = ?
+        SET reason = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     `;
     
@@ -273,6 +309,7 @@ function updateStockMovement(req, res) {
             return res.status(404).json({ error: 'Movimento non trovato' });
         }
         
+        console.log(`✅ Movement updated: ${id}`);
         res.json({ message: 'Movimento aggiornato con successo' });
     });
 }
@@ -283,10 +320,8 @@ function deleteStockMovement(req, res) {
     const { revert_stock = false } = req.body;
     
     if (revert_stock) {
-        // Implementa logica per revertire il movimento sullo stock
-        // Questo è complesso e richiede attenzione per evitare inconsistenze
         return res.status(501).json({ 
-            error: 'Funzionalità di revert non implementata per sicurezza' 
+            error: 'Funzionalità di revert automatico non implementata per sicurezza' 
         });
     }
     
@@ -302,7 +337,38 @@ function deleteStockMovement(req, res) {
             return res.status(404).json({ error: 'Movimento non trovato' });
         }
         
-        res.json({ message: 'Movimento cancellato con successo' });
+        console.log(`✅ Movement deleted: ${id}`);
+        res.json({ message: 'Movimento eliminato con successo' });
+    });
+}
+
+// GET prodotti per dropdown
+function getProductsForMovements(req, res) {
+    const sql = `
+        SELECT 
+            p.id as product_id,
+            p.name as product_name,
+            pv.id as variant_id,
+            pv.name as variant_name,
+            c.name as category_name,
+            COALESCE(s.quantity, 0) as current_stock,
+            s.unit,
+            s.cost_per_unit
+        FROM products p
+        INNER JOIN product_variants pv ON p.id = pv.product_id
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN stock s ON pv.id = s.product_variant_id
+        WHERE p.is_available = 1 AND pv.is_active = 1
+        ORDER BY p.name, pv.name
+    `;
+    
+    connection.query(sql, (err, results) => {
+        if (err) {
+            console.error('Error fetching products:', err);
+            return res.status(500).json({ error: 'Errore nel caricamento prodotti' });
+        }
+        
+        res.json({ products: results });
     });
 }
 
@@ -341,35 +407,6 @@ function getProductMovements(req, res) {
     });
 }
 
-// GET prodotti per dropdown
-function getProductsForMovements(req, res) {
-    const sql = `
-        SELECT 
-            p.id as product_id,
-            p.name as product_name,
-            pv.id as variant_id,
-            pv.name as variant_name,
-            c.name as category_name,
-            COALESCE(s.quantity, 0) as current_stock,
-            s.unit
-        FROM products p
-        INNER JOIN product_variants pv ON p.id = pv.product_id
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN stock s ON pv.id = s.product_variant_id
-        WHERE p.is_available = 1 AND pv.is_active = 1
-        ORDER BY p.name, pv.name
-    `;
-    
-    connection.query(sql, (err, results) => {
-        if (err) {
-            console.error('Error fetching products:', err);
-            return res.status(500).json({ error: 'Errore nel caricamento prodotti' });
-        }
-        
-        res.json({ products: results });
-    });
-}
-
 // Funzione helper per aggiornare stock da movimento
 function updateStockFromMovement(product_variant_id, type, quantity, callback) {
     // Determina il cambio di quantità
@@ -381,16 +418,30 @@ function updateStockFromMovement(product_variant_id, type, quantity, callback) {
     }
     // Per 'adjustment' usiamo la quantità così com'è (può essere positiva o negativa)
     
-    // Aggiorna o inserisci record stock
-    const upsertStockSql = `
-        INSERT INTO stock (product_variant_id, quantity, updated_at) 
-        VALUES (?, ?, NOW())
-        ON DUPLICATE KEY UPDATE 
-        quantity = GREATEST(0, quantity + ?),
-        updated_at = NOW()
-    `;
+    // Verifica se esiste già un record stock
+    const checkStockSql = 'SELECT quantity FROM stock WHERE product_variant_id = ?';
     
-    connection.query(upsertStockSql, [product_variant_id, Math.max(0, quantityChange), quantityChange], callback);
+    connection.query(checkStockSql, [product_variant_id], (err, results) => {
+        if (err) return callback(err);
+        
+        if (results.length > 0) {
+            // Aggiorna stock esistente
+            const updateStockSql = `
+                UPDATE stock 
+                SET quantity = GREATEST(0, quantity + ?), 
+                    updated_at = CURRENT_TIMESTAMP 
+                WHERE product_variant_id = ?
+            `;
+            connection.query(updateStockSql, [quantityChange, product_variant_id], callback);
+        } else {
+            // Crea nuovo record stock se non esiste
+            const insertStockSql = `
+                INSERT INTO stock (product_variant_id, quantity, unit, created_at, updated_at) 
+                VALUES (?, GREATEST(0, ?), 'pcs', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `;
+            connection.query(insertStockSql, [product_variant_id, quantityChange], callback);
+        }
+    });
 }
 
 // Funzione helper per statistiche
@@ -398,8 +449,12 @@ function calculateMovementStats(movements) {
     const today = new Date().toISOString().slice(0, 10);
     const thisWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     
-    const todayMovements = movements.filter(m => m.created_at.toISOString().slice(0, 10) === today);
-    const weekMovements = movements.filter(m => m.created_at.toISOString().slice(0, 10) >= thisWeek);
+    const todayMovements = movements.filter(m => 
+        new Date(m.created_at).toISOString().slice(0, 10) === today
+    );
+    const weekMovements = movements.filter(m => 
+        new Date(m.created_at).toISOString().slice(0, 10) >= thisWeek
+    );
     
     return {
         total: movements.length,

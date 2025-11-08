@@ -103,8 +103,6 @@ export default function AdminDashboard() {
       case 'variants': return <VariantsSection />;
       case 'allergens': return <AllergensSection />;
       case 'promotions': return <PromotionsSection />;
-      
-      // NUOVE SEZIONI
       case 'tables': return <TablesSection />;
       case 'ingredients': return <IngredientsSection />;
       case 'recipes': return <RecipesSection />;
