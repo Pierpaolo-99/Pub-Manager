@@ -2,208 +2,142 @@ const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
-const initializePassport = require('./auth/passport-config');
+
+// Configurazione Passport
+require('./auth/passport-config')(passport);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Inizializza Passport
-initializePassport(passport);
+// ===== MIDDLEWARE BASE =====
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
 
-// Middleware
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Configurazione CORS
-app.use(cors({
-    origin: 'http://localhost:5173', // URL del frontend Vite
-    credentials: true,
-    optionsSuccessStatus: 200
-}));
-
-// Configurazione sessioni (DEVE essere prima di passport.initialize())
+// ===== SESSIONI =====
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'your-secret-key-here',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: false, // true solo in produzione con HTTPS
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 ore
-    }
+  secret: process.env.SESSION_SECRET || 'pub-manager-secret-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false,
+    maxAge: 24 * 60 * 60 * 1000, // 24 ore
+    httpOnly: true
+  }
 }));
 
-// Inizializzazione Passport (DOPO le sessioni)
 app.use(passport.initialize());
 app.use(passport.session());
 
-// IMPORTA IL CONTROLLER USERS - AGGIUNGI QUESTA LINEA
-const usersController = require('./controllers/users_controller');
+// ===== MIDDLEWARE DI AUTENTICAZIONE =====
+const authMiddleware = (req, res, next) => {
+  // Route pubbliche che non richiedono autenticazione
+  const publicRoutes = [
+    '/api/auth/login',
+    '/api/auth/register', 
+    '/api/auth/logout',
+    '/api/auth/status'
+  ];
+  
+  // Permetti accesso alle route pubbliche
+  if (publicRoutes.some(route => req.path.startsWith(route))) {
+    return next();
+  }
+  
+  // Per development, permetti tutto (RIMUOVI IN PRODUZIONE)
+  if (process.env.NODE_ENV === 'development') {
+    req.user = req.user || { id: 1, username: 'admin', role: 'admin' };
+    return next();
+  }
+  
+  // Controllo autenticazione normale
+  if (req.isAuthenticated() && req.user) {
+    return next();
+  }
+  
+  console.log(`🚫 Unauthorized access attempt to: ${req.method} ${req.path}`);
+  return res.status(401).json({ 
+    success: false,
+    error: 'Accesso non autorizzato',
+    message: 'Devi essere autenticato per accedere a questa risorsa'
+  });
+};
 
-// Routes
-const usersRoutes = require('./routes/users');
-const categoriesRoutes = require('./routes/categories');
-const productsRoutes = require('./routes/products');
-const ordersRoutes = require('./routes/orders');
-const allergensRoutes = require('./routes/allergens');
-const promotionsRoutes = require('./routes/promotions');
-const stockRoutes = require('./routes/stock');
-const variantsRoutes = require('./routes/variants');
-const financialRoutes = require('./routes/financial');
-const ingredientsRoutes = require('./routes/ingredients');
-const ingredientsStockRoutes = require('./routes/ingredients_stock');
-const purchaseOrdersRoutes = require('./routes/purchase_orders');
-const suppliersRoutes = require('./routes/suppliers');
-const recipesRoutes = require('./routes/recipes');
-const reportsRoutes = require('./routes/reports');
-const settingsRoutes = require('./routes/settings');
-const stockMovementsRoutes = require('./routes/stock_movements');
-const tablesRoutes = require('./routes/tables');
-const analyticsRoutes = require('./routes/analytics');
-
-app.use('/api/users', usersRoutes);
-app.use('/api/categories', categoriesRoutes);
-app.use('/api/products', productsRoutes);
-app.use('/api/orders', ordersRoutes);
-app.use('/api/allergens', allergensRoutes);
-app.use('/api/promotions', promotionsRoutes);
-app.use('/api/stock', stockRoutes);
-app.use('/api/variants', variantsRoutes);
-app.use('/api/financial', financialRoutes);
-app.use('/api/ingredients', ingredientsRoutes);
-app.use('/api/ingredients-stock', ingredientsStockRoutes);
-app.use('/api/purchase-orders', purchaseOrdersRoutes);
-app.use('/api/suppliers', suppliersRoutes);
-app.use('/api/recipes', recipesRoutes);
-app.use('/api/reports', reportsRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/stock-movements', stockMovementsRoutes);
-app.use('/api/tables', tablesRoutes);
-app.use('/api/analytics', analyticsRoutes);
-
-// ROUTE DI AUTENTICAZIONE CON GESTIONE ERRORI MIGLIORATA
-
-// Login route (usa Passport)
-app.post('/api/auth/login', (req, res, next) => {
-    console.log('🔑 Login attempt for:', req.body.email);
-    
-    passport.authenticate('login', (err, user, info) => {
-        if (err) {
-            console.error('❌ Passport authentication error:', err);
-            return res.status(500).json({
-                success: false,
-                message: 'Errore del server durante l\'autenticazione'
-            });
-        }
-        
-        if (!user) {
-            console.log('❌ Authentication failed:', info);
-            return res.status(401).json({
-                success: false,
-                message: info?.message || 'Credenziali non valide'
-            });
-        }
-        
-        req.logIn(user, (loginErr) => {
-            if (loginErr) {
-                console.error('❌ Login error:', loginErr);
-                return res.status(500).json({
-                    success: false,
-                    message: 'Errore durante il login'
-                });
-            }
-            
-            console.log('✅ Login successful for user:', user.username);
-            
-            res.json({
-                success: true,
-                message: 'Login effettuato con successo',
-                user: user
-            });
-        });
-    })(req, res, next);
-});
-
-// Register route (usa Passport)
-app.post('/api/auth/register', (req, res, next) => {
-    console.log('📝 Registration attempt for:', req.body.email);
-    
-    passport.authenticate('register', (err, user, info) => {
-        if (err) {
-            console.error('❌ Passport registration error:', err);
-            return res.status(500).json({
-                success: false,
-                message: 'Errore del server durante la registrazione'
-            });
-        }
-        
-        if (!user) {
-            console.log('❌ Registration failed:', info);
-            return res.status(400).json({
-                success: false,
-                message: info?.message || 'Registrazione fallita'
-            });
-        }
-        
-        req.logIn(user, (loginErr) => {
-            if (loginErr) {
-                console.error('❌ Auto-login after registration failed:', loginErr);
-                return res.status(500).json({
-                    success: false,
-                    message: 'Registrazione completata ma errore durante il login automatico'
-                });
-            }
-            
-            console.log('✅ Registration and auto-login successful for user:', user.username);
-            
-            res.json({
-                success: true,
-                message: 'Registrazione effettuata con successo',
-                user: user
-            });
-        });
-    })(req, res, next);
-});
-
-// Logout route
-app.post('/api/auth/logout', (req, res) => {
-    console.log('👋 Logout request for user:', req.user?.username || 'unknown');
-    
-    req.session.destroy((err) => {
-        if (err) {
-            console.error('❌ Error destroying session:', err);
-            return res.status(500).json({
-                success: false,
-                message: 'Errore durante il logout'
-            });
-        }
-        
-        console.log('✅ Logout successful');
-        res.json({
-            success: true,
-            message: 'Logout effettuato con successo'
-        });
-    });
-});
-
-// Check authentication route (usa il controller users)
-app.get('/api/users/me', usersController.getCurrentUser);
-
-// Test route
+// ===== ROUTE BASE =====
 app.get('/', (req, res) => {
-    res.json({ message: 'Pub Manager API is running!' });
+  res.json({ 
+    message: 'Pub Manager API Server',
+    version: '1.0.0',
+    status: 'online',
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error('🚨 Unhandled error:', err);
-    res.status(500).json({
-        success: false,
-        message: 'Errore interno del server'
-    });
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
+// ===== ROUTE AUTENTICAZIONE (PUBBLICHE) =====
+app.use('/api/auth', require('./routes/auth'));
+
+// ===== APPLICA MIDDLEWARE AUTENTICAZIONE =====
+app.use('/api', authMiddleware);
+
+// ===== ROUTE API PROTETTE =====
+app.use('/api/users', require('./routes/users'));
+app.use('/api/categories', require('./routes/categories'));
+app.use('/api/products', require('./routes/products'));
+app.use('/api/variants', require('./routes/variants'));
+app.use('/api/allergens', require('./routes/allergens'));
+app.use('/api/ingredients', require('./routes/ingredients'));
+app.use('/api/recipes', require('./routes/recipes'));
+app.use('/api/suppliers', require('./routes/suppliers'));
+app.use('/api/stock', require('./routes/stock'));
+app.use('/api/stock-movements', require('./routes/stock_movements'));
+app.use('/api/ingredients-stock', require('./routes/ingredients_stock'));
+app.use('/api/tables', require('./routes/tables'));
+app.use('/api/orders', require('./routes/orders'));
+app.use('/api/promotions', require('./routes/promotions'));
+app.use('/api/purchase-orders', require('./routes/purchase_orders'));
+app.use('/api/financial', require('./routes/financial'));
+app.use('/api/reports', require('./routes/reports'));
+app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/settings', require('./routes/settings'));
+
+// ===== GESTIONE ERRORI GLOBALI =====
+app.use((error, req, res, next) => {
+  console.error('💥 Global Error:', {
+    message: error.message,
+    stack: error.stack,
+    url: req.url,
+    method: req.method,
+    body: req.body
+  });
+  
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  
+  res.status(500).json({ 
+    success: false,
+    error: 'Errore interno del server',
+    message: isDevelopment ? error.message : 'Qualcosa è andato storto',
+    stack: isDevelopment ? error.stack : undefined
+  });
+});
+
+// ===== AVVIO SERVER =====
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📡 CORS enabled for: http://localhost:5173`);
+  console.log('🚀 ================================');
+  console.log(`🚀 Pub Manager Server ONLINE`);
+  console.log(`🚀 Port: ${PORT}`);
+  console.log(`🚀 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🚀 Frontend URL: http://localhost:5173`);
+  console.log(`🚀 API Base URL: http://localhost:${PORT}/api`);
+  console.log(`🚀 Health Check: http://localhost:${PORT}/health`);
+  console.log('🚀 ================================');
 });
+
+module.exports = app;

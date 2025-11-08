@@ -1,31 +1,5 @@
 const connection = require('../database/db');
-const bcrypt = require('bcrypt'); // CORRETTO: usa 'bcrypt' non 'bcryptjs'
-
-// GET current user (per autenticazione) - COMPATIBILE CON PASSPORT
-function getCurrentUser(req, res) {
-    console.log('🔍 getCurrentUser called');
-    console.log('Session data:', req.session);
-    console.log('User in session:', req.session?.user);
-    console.log('Passport user:', req.user);
-    
-    // Controlla sia req.user (Passport) che req.session.user
-    const user = req.user || req.session?.user;
-    
-    if (user) {
-        // Rimuovi la password dalla risposta per sicurezza
-        const { password, ...userWithoutPassword } = user;
-        res.json({
-            success: true,
-            user: userWithoutPassword
-        });
-    } else {
-        console.log('❌ No user in session or passport');
-        res.status(401).json({
-            success: false,
-            message: 'Non autenticato'
-        });
-    }
-}
+const bcrypt = require('bcrypt');
 
 // GET all users
 function getAllUsers(req, res) {
@@ -46,7 +20,6 @@ function getAllUsers(req, res) {
             });
         }
         
-        // Converti il campo active da tinyint a boolean
         const users = results.map(user => ({
             ...user,
             active: Boolean(user.active)
@@ -94,6 +67,99 @@ function getUserById(req, res) {
     });
 }
 
+// GET utente corrente (/api/users/me)
+function getCurrentUser(req, res) {
+  if (!req.user) {
+    return res.status(401).json({ 
+      success: false,
+      error: 'Non autenticato' 
+    });
+  }
+
+  const sql = `
+    SELECT 
+      id, username, email, role, first_name, last_name, 
+      phone, active, last_login, created_at, updated_at
+    FROM users 
+    WHERE id = ?
+  `;
+  
+  connection.query(sql, [req.user.id], (err, results) => {
+    if (err) {
+      console.error('❌ Error fetching current user:', err);
+      return res.status(500).json({ 
+        success: false,
+        error: 'Errore nel caricamento profilo utente',
+        details: err.message 
+      });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Utente non trovato' 
+      });
+    }
+    
+    const user = results[0];
+    console.log(`✅ Current user fetched: ${user.username}`);
+    
+    res.json({ 
+      success: true,
+      user: user
+    });
+  });
+}
+
+// GET statistiche utenti
+function getUserStats(req, res) {
+  console.log('📊 Getting user stats');
+  
+  const sql = `
+    SELECT 
+      COUNT(*) as total_users,
+      COUNT(CASE WHEN active = 1 THEN 1 END) as active_users,
+      COUNT(CASE WHEN active = 0 THEN 1 END) as inactive_users,
+      COUNT(CASE WHEN role = 'admin' THEN 1 END) as admin_users,
+      COUNT(CASE WHEN role = 'waiter' THEN 1 END) as waiter_users,
+      COUNT(CASE WHEN role = 'kitchen' THEN 1 END) as kitchen_users,
+      COUNT(CASE WHEN role = 'cashier' THEN 1 END) as cashier_users,
+      COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as new_today,
+      COUNT(CASE WHEN DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) THEN 1 END) as new_this_week,
+      COUNT(CASE WHEN DATE(last_login) = CURDATE() THEN 1 END) as active_today,
+      COUNT(CASE WHEN DATE(last_login) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) THEN 1 END) as active_this_week
+    FROM users
+  `;
+  
+  connection.query(sql, (err, results) => {
+    if (err) {
+      console.error('❌ Error fetching user stats:', err);
+      return res.status(500).json({ 
+        success: false,
+        error: 'Errore nel caricamento statistiche',
+        details: err.message 
+      });
+    }
+    
+    const stats = results[0] || {};
+    
+    // Assicurati che tutti i valori siano numerici
+    Object.keys(stats).forEach(key => {
+      if (stats[key] === null || stats[key] === undefined) {
+        stats[key] = 0;
+      } else {
+        stats[key] = parseInt(stats[key]) || 0;
+      }
+    });
+    
+    console.log('✅ User stats fetched:', stats);
+    res.json({
+      success: true,
+      stats: stats
+    });
+  });
+}
+
 // POST create new user
 function createUser(req, res) {
     const { 
@@ -109,14 +175,12 @@ function createUser(req, res) {
     
     console.log('➕ Creating new user:', { username, email, role, first_name, last_name, phone, active });
     
-    // Validazione input
     if (!username || !email || !password) {
         return res.status(400).json({ 
             error: 'Username, email e password sono obbligatori' 
         });
     }
     
-    // Verifica se l'utente esiste già
     const checkQuery = 'SELECT id FROM users WHERE email = ? OR username = ?';
     connection.query(checkQuery, [email, username], (err, results) => {
         if (err) {
@@ -133,7 +197,6 @@ function createUser(req, res) {
             });
         }
         
-        // Hash password (USA BCRYPT come Passport con 10 rounds)
         bcrypt.hash(password, 10, (hashErr, hashedPassword) => {
             if (hashErr) {
                 console.error('❌ Error hashing password:', hashErr);
@@ -191,7 +254,6 @@ function updateUser(req, res) {
     
     console.log('✏️ Updating user:', userId, req.body);
     
-    // Verifica se l'utente esiste
     const checkQuery = 'SELECT * FROM users WHERE id = ?';
     connection.query(checkQuery, [userId], (err, results) => {
         if (err) {
@@ -208,7 +270,6 @@ function updateUser(req, res) {
             });
         }
         
-        // Costruisci la query di update dinamicamente
         const updates = [];
         const values = [];
         
@@ -241,7 +302,6 @@ function updateUser(req, res) {
             values.push(active ? 1 : 0);
         }
         
-        // Se c'è una nuova password, hashala
         if (password) {
             bcrypt.hash(password, 10, (hashErr, hashedPassword) => {
                 if (hashErr) {
@@ -297,7 +357,6 @@ function deleteUser(req, res) {
     
     console.log('🗑️ Deleting user:', userId);
     
-    // Verifica se l'utente esiste
     const checkQuery = 'SELECT username FROM users WHERE id = ?';
     connection.query(checkQuery, [userId], (err, results) => {
         if (err) {
@@ -333,12 +392,96 @@ function deleteUser(req, res) {
     });
 }
 
-// Esporta tutte le funzioni
+// PUT cambio password
+function changePassword(req, res) {
+    const userId = req.params.id;
+    const { currentPassword, newPassword } = req.body;
+    
+    console.log('🔑 Changing password for user:', userId);
+    
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ 
+            error: 'Password attuale e nuova password sono obbligatorie' 
+        });
+    }
+    
+    if (newPassword.length < 6) {
+        return res.status(400).json({ 
+            error: 'La nuova password deve essere di almeno 6 caratteri' 
+        });
+    }
+    
+    // Prima ottieni la password attuale dell'utente
+    const getUserQuery = 'SELECT password FROM users WHERE id = ?';
+    connection.query(getUserQuery, [userId], (err, results) => {
+        if (err) {
+            console.error('❌ Error fetching user for password change:', err);
+            return res.status(500).json({ 
+                error: 'Errore nel caricamento utente',
+                details: err.message 
+            });
+        }
+        
+        if (results.length === 0) {
+            return res.status(404).json({ 
+                error: 'Utente non trovato' 
+            });
+        }
+        
+        const user = results[0];
+        
+        // Verifica la password attuale
+        bcrypt.compare(currentPassword, user.password, (compareErr, isValid) => {
+            if (compareErr) {
+                console.error('❌ Error comparing passwords:', compareErr);
+                return res.status(500).json({ 
+                    error: 'Errore nella verifica password' 
+                });
+            }
+            
+            if (!isValid) {
+                return res.status(400).json({ 
+                    error: 'Password attuale non corretta' 
+                });
+            }
+            
+            // Hash della nuova password
+            bcrypt.hash(newPassword, 10, (hashErr, hashedNewPassword) => {
+                if (hashErr) {
+                    console.error('❌ Error hashing new password:', hashErr);
+                    return res.status(500).json({ 
+                        error: 'Errore nella crittografia nuova password' 
+                    });
+                }
+                
+                // Aggiorna la password nel database
+                const updateQuery = 'UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?';
+                connection.query(updateQuery, [hashedNewPassword, userId], (updateErr, result) => {
+                    if (updateErr) {
+                        console.error('❌ Error updating password:', updateErr);
+                        return res.status(500).json({ 
+                            error: 'Errore nell\'aggiornamento password',
+                            details: updateErr.message 
+                        });
+                    }
+                    
+                    console.log('✅ Password updated successfully for user:', userId);
+                    res.json({ 
+                        message: 'Password cambiata con successo' 
+                    });
+                });
+            });
+        });
+    });
+}
+
 module.exports = {
-    getCurrentUser,
-    getAllUsers,
-    getUserById,
-    createUser,
-    updateUser,
-    deleteUser
+  getAllUsers,
+  getUserById,
+  getCurrentUser,
+  getUserStats,
+  createUser,
+  updateUser,
+  deleteUser,
+  changePassword  // ← QUESTA ERA LA FUNZIONE MANCANTE!
 };
