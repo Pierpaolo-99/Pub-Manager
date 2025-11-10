@@ -7,7 +7,7 @@ export default function FinancialSection() {
   const [selectedPeriod, setSelectedPeriod] = useState('month');
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
-    return today.toISOString().slice(0, 7); // YYYY-MM format per default
+    return today.toISOString().slice(0, 7); // YYYY-MM format
   });
   const [financialData, setFinancialData] = useState(null);
   const [detailsData, setDetailsData] = useState(null);
@@ -16,52 +16,45 @@ export default function FinancialSection() {
   const [activeTab, setActiveTab] = useState('overview');
   const [comparisonPeriod, setComparisonPeriod] = useState('previous');
 
-  // Carica dati finanziari dal backend
+  // ✅ FETCH REAL DATA ONLY
   useEffect(() => {
     fetchFinancialData();
-  }, [selectedPeriod, selectedDate]);
+  }, [selectedPeriod, selectedDate, comparisonPeriod]);
 
   const fetchFinancialData = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      console.log('📊 Fetching financial data:', { selectedPeriod, selectedDate });
+      console.log('📊 Fetching real financial data:', { selectedPeriod, selectedDate, comparisonPeriod });
       
-      const response = await fetch(`http://localhost:3000/api/financial/summary?period=${selectedPeriod}&date=${selectedDate}&comparison=${comparisonPeriod}`, {
+      const response = await fetch(`/api/financial/summary?period=${selectedPeriod}&date=${selectedDate}&comparison=${comparisonPeriod}`, {
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
 
-      const data = await response.json();
-      console.log('📈 Financial data received:', data);
+      const responseData = await response.json();
+      console.log('📈 Financial data received:', responseData);
       
-      // Se la risposta contiene un errore ma include dati di fallback
       if (!response.ok) {
-        if (data.data) {
-          // Usa i dati di fallback dal backend
-          setFinancialData(data.data);
-          setError(`Attenzione: ${data.error} - Visualizzazione dati di esempio`);
-        } else {
-          throw new Error(data.message || `Errore HTTP: ${response.status}`);
-        }
-      } else {
-        // Aggiungi dati mancanti se non presenti
-        if (!data.dailyTrend || data.dailyTrend.length === 0) {
-          data.dailyTrend = generateDailyTrend(selectedPeriod, selectedDate);
-        }
-        
-        if (!data.topProducts || data.topProducts.length === 0) {
-          data.topProducts = generateTopProducts();
-        }
-        
-        setFinancialData(data);
+        throw new Error(responseData.error || `Errore HTTP: ${response.status}`);
       }
+
+      // ✅ ONLY REAL DATA - NO MOCK
+      if (responseData.success && responseData.data) {
+        setFinancialData(responseData.data);
+      } else {
+        throw new Error('Dati non disponibili nel database');
+      }
+      
     } catch (err) {
       console.error('❌ Error fetching financial data:', err);
       setError(`Errore nel caricamento dei dati: ${err.message}`);
       
-      // Fallback con dati mock in caso di errore totale
-      setFinancialData(generateFallbackData());
+      // ✅ NO FALLBACK - ONLY ERROR STATE
+      setFinancialData(null);
     } finally {
       setLoading(false);
     }
@@ -69,120 +62,100 @@ export default function FinancialSection() {
 
   const fetchDetailedReport = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/api/financial/detailed?period=${selectedPeriod}&date=${selectedDate}`, {
+      const response = await fetch(`/api/financial/detailed?period=${selectedPeriod}&date=${selectedDate}`, {
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
 
       if (!response.ok) {
         throw new Error(`Errore HTTP: ${response.status}`);
       }
 
-      const data = await response.json();
-      setDetailsData(data);
-      setShowDetailsModal(true);
+      const responseData = await response.json();
+      
+      if (responseData.success && responseData.data) {
+        setDetailsData(responseData.data);
+        setShowDetailsModal(true);
+      } else {
+        throw new Error(responseData.error || 'Dati non disponibili');
+      }
     } catch (err) {
       console.error('❌ Error fetching detailed report:', err);
       setError(`Errore nel caricamento del report: ${err.message}`);
     }
   };
 
-  const exportFinancialData = async (format = 'excel') => {
+  const exportFinancialData = async (format = 'json') => {
     try {
-      const response = await fetch(`http://localhost:3000/api/financial/export?period=${selectedPeriod}&date=${selectedDate}&format=${format}`, {
+      const response = await fetch(`/api/financial/export?period=${selectedPeriod}&date=${selectedDate}&format=${format}`, {
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
 
       if (!response.ok) {
         throw new Error(`Errore HTTP: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log('📁 Export response:', data);
-      alert(`Funzione di esportazione in sviluppo - Formato: ${format}`);
+      const responseData = await response.json();
+      
+      if (responseData.success) {
+        if (format === 'json') {
+          const dataStr = JSON.stringify(responseData.export_data, null, 2);
+          const dataBlob = new Blob([dataStr], {type: 'application/json'});
+          const url = URL.createObjectURL(dataBlob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `financial-report-${selectedDate}.json`;
+          link.click();
+          URL.revokeObjectURL(url);
+        } else {
+          alert(`Export ${format} completato - ${responseData.summary?.records_count || 0} record esportati`);
+        }
+      } else {
+        throw new Error(responseData.error || 'Errore nell\'esportazione');
+      }
     } catch (err) {
       console.error('❌ Error exporting data:', err);
       setError(`Errore nell'esportazione: ${err.message}`);
     }
   };
 
-  // Genera trend giornaliero basato sul periodo
-  const generateDailyTrend = (period, date) => {
-    const trends = [];
-    const days = period === 'month' ? 30 : period === 'week' ? 7 : 1;
-    
-    for (let i = days - 1; i >= 0; i--) {
-      const currentDate = new Date();
-      currentDate.setDate(currentDate.getDate() - i);
-      
-      trends.push({
-        date: currentDate.toISOString().split('T')[0],
-        revenue: Math.floor(Math.random() * 600) + 200,
-        orders: Math.floor(Math.random() * 25) + 5
-      });
-    }
-    
-    return trends;
-  };
-
-  // Genera prodotti top mock
-  const generateTopProducts = () => {
-    return [
-      { name: 'Birra IPA', revenue: 2450.50, margin: 68.2 },
-      { name: 'Pizza Margherita', revenue: 1890.25, margin: 45.8 },
-      { name: 'Tagliere Misto', revenue: 1567.80, margin: 72.1 },
-      { name: 'Hamburger Classic', revenue: 1234.60, margin: 55.3 },
-      { name: 'Birra Lager', revenue: 987.45, margin: 65.9 }
-    ];
-  };
-
-  // Dati di fallback in caso di errore
-  const generateFallbackData = () => {
-    return {
-      revenue: { current: 15420, previous: 13240, change: 16.5 },
-      costs: { current: 8230, previous: 7890, change: 4.3 },
-      profit: { current: 7190, previous: 5350, change: 34.4 },
-      margin: { current: 46.6, previous: 40.4, change: 15.3 },
-      orders: { current: 485, previous: 412, change: 17.7 },
-      avgOrder: { current: 31.80, previous: 32.52, change: -2.2 },
-      expenses: {
-        ingredients: 4526.50,
-        labor: 2057.50,
-        utilities: 823.00,
-        rent: 1200.00,
-        other: 623.00
-      },
-      dailyTrend: generateDailyTrend('month', selectedDate),
-      topProducts: generateTopProducts()
-    };
-  };
-
+  // ✅ UTILITY FUNCTIONS
   const formatCurrency = (amount) => {
+    const value = parseFloat(amount) || 0;
     return new Intl.NumberFormat('it-IT', {
       style: 'currency',
-      currency: 'EUR'
-    }).format(amount || 0);
+      currency: 'EUR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
   };
 
   const formatPercentage = (value) => {
-    if (isNaN(value)) return '0.0%';
-    const formatted = Math.abs(value).toFixed(1);
-    const sign = value >= 0 ? '+' : '-';
+    if (isNaN(value) || value === null || value === undefined) return '0.0%';
+    const formatted = Math.abs(parseFloat(value)).toFixed(1);
+    const sign = parseFloat(value) >= 0 ? '+' : '-';
     return `${sign}${formatted}%`;
   };
 
   const getChangeClass = (value) => {
-    return value >= 0 ? 'positive' : 'negative';
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) return 'neutral';
+    return numValue >= 0 ? 'positive' : 'negative';
   };
 
   const getKPIStatus = (current, target) => {
-    const ratio = (current / target) * 100;
+    const ratio = (parseFloat(current) / parseFloat(target)) * 100;
     if (ratio >= 100) return 'excellent';
     if (ratio >= 90) return 'good';
     if (ratio >= 80) return 'warning';
     return 'poor';
   };
 
-  // Gestione cambio data in base al periodo
   const handlePeriodChange = (newPeriod) => {
     setSelectedPeriod(newPeriod);
     
@@ -192,9 +165,9 @@ export default function FinancialSection() {
     if (newPeriod === 'day') {
       newDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
     } else if (newPeriod === 'week') {
-      const year = today.getFullYear();
-      const week = getWeekNumber(today);
-      newDate = `${year}-W${week.toString().padStart(2, '0')}`; // YYYY-WXX
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - today.getDay() + 1);
+      newDate = monday.toISOString().split('T')[0]; // YYYY-MM-DD
     } else if (newPeriod === 'month') {
       newDate = today.toISOString().slice(0, 7); // YYYY-MM
     }
@@ -202,34 +175,46 @@ export default function FinancialSection() {
     setSelectedDate(newDate);
   };
 
-  // Calcola il numero della settimana
-  const getWeekNumber = (date) => {
-    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
-    const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
-    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
-  };
-
+  // ✅ LOADING STATE
   if (loading) {
     return (
       <div className="financial-section">
         <div className="loading-state">
           <div className="loading-spinner"></div>
-          <p>Caricamento dati finanziari...</p>
+          <p>Caricamento dati finanziari dal database...</p>
         </div>
       </div>
     );
   }
 
+  // ✅ ERROR STATE - NO DATA AVAILABLE
   if (!financialData) {
     return (
       <div className="financial-section">
         <div className="error-state">
-          <span className="error-icon">⚠️</span>
-          <h3>Dati non disponibili</h3>
-          <p>Impossibile caricare i dati finanziari</p>
-          <button className="btn primary" onClick={fetchFinancialData}>
-            🔄 Riprova
-          </button>
+          <span className="error-icon">📊</span>
+          <h3>Nessun dato finanziario disponibile</h3>
+          <p>
+            {error ? error : 'Non ci sono dati nel database per il periodo selezionato'}
+          </p>
+          <div className="error-actions">
+            <button className="btn primary" onClick={fetchFinancialData}>
+              🔄 Ricarica
+            </button>
+            <button 
+              className="btn secondary" 
+              onClick={() => {
+                setSelectedPeriod('month');
+                const today = new Date();
+                setSelectedDate(today.toISOString().slice(0, 7));
+              }}
+            >
+              📅 Periodo Corrente
+            </button>
+          </div>
+          <div className="data-info">
+            <p><small>💡 I dati finanziari vengono calcolati automaticamente dai tuoi ordini e acquisti</small></p>
+          </div>
         </div>
       </div>
     );
@@ -242,11 +227,17 @@ export default function FinancialSection() {
         <div className="header-left">
           <h2>💰 Gestione Finanziaria</h2>
           <p className="section-subtitle">
-            Controllo economico e margini • Periodo: {
+            Dati reali dal database • Periodo: {
               selectedPeriod === 'month' ? 'Mensile' : 
               selectedPeriod === 'week' ? 'Settimanale' : 
               'Giornaliero'
             }
+            {financialData.date_range && (
+              <> • {financialData.date_range.start} → {financialData.date_range.end}</>
+            )}
+            {financialData.summary?.total_transactions && (
+              <> • {financialData.summary.total_transactions} transazioni</>
+            )}
           </p>
         </div>
         <div className="header-controls">
@@ -271,12 +262,30 @@ export default function FinancialSection() {
             </button>
           </div>
           <input 
-            type={selectedPeriod === 'day' ? 'date' : selectedPeriod === 'week' ? 'week' : 'month'}
+            type={selectedPeriod === 'day' ? 'date' : selectedPeriod === 'week' ? 'date' : 'month'}
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             className="date-input"
           />
         </div>
+      </div>
+
+      {/* ✅ DATA SOURCE INDICATOR */}
+      <div className="data-source-info">
+        <span className="source-icon">🗄️</span>
+        <span>
+          Fonte dati: Database reale • 
+          {financialData.costs?.source === 'purchase_orders' && financialData.costs.purchase_orders_count > 0 && (
+            <> Ordini acquisto: {financialData.costs.purchase_orders_count} • </>
+          )}
+          {financialData.revenue?.breakdown && (
+            <>
+              Pagamenti: 💰 {formatCurrency(financialData.revenue.breakdown.cash)} • 
+              💳 {formatCurrency(financialData.revenue.breakdown.card)} • 
+              🏧 {formatCurrency(financialData.revenue.breakdown.debit)}
+            </>
+          )}
+        </span>
       </div>
 
       {/* Navigazione Tab */}
@@ -291,19 +300,19 @@ export default function FinancialSection() {
           className={`tab-btn ${activeTab === 'trends' ? 'active' : ''}`}
           onClick={() => setActiveTab('trends')}
         >
-          📈 Tendenze
+          📈 Andamento
         </button>
         <button 
           className={`tab-btn ${activeTab === 'breakdown' ? 'active' : ''}`}
           onClick={() => setActiveTab('breakdown')}
         >
-          📋 Dettaglio
+          📋 Dettaglio Costi
         </button>
         <button 
-          className={`tab-btn ${activeTab === 'kpi' ? 'active' : ''}`}
-          onClick={() => setActiveTab('kpi')}
+          className={`tab-btn ${activeTab === 'transactions' ? 'active' : ''}`}
+          onClick={() => setActiveTab('transactions')}
         >
-          🎯 KPI
+          🧾 Transazioni
         </button>
       </div>
 
@@ -321,30 +330,46 @@ export default function FinancialSection() {
         </div>
       )}
 
-      {/* Contenuto principale */}
+      {/* ✅ OVERVIEW TAB - ONLY REAL DATA */}
       {activeTab === 'overview' && (
         <>
-          {/* KPI Cards principali */}
           <div className="financial-overview">
             <div className="financial-card revenue">
               <div className="card-header">
                 <div className="card-icon">💵</div>
                 <div className="card-title">
-                  <h3>Ricavi</h3>
-                  <span className="card-subtitle">Totale incassato</span>
+                  <h3>Ricavi Totali</h3>
+                  <span className="card-subtitle">
+                    Incassato nel periodo
+                    {financialData.revenue?.tax_collected > 0 && (
+                      <> • IVA: {formatCurrency(financialData.revenue.tax_collected)}</>
+                    )}
+                  </span>
                 </div>
               </div>
               <div className="card-content">
-                <div className="amount">{formatCurrency(financialData.revenue.current)}</div>
-                <div className={`change ${getChangeClass(financialData.revenue.change)}`}>
-                  {formatPercentage(financialData.revenue.change)}
+                <div className="amount">{formatCurrency(financialData.revenue?.current || 0)}</div>
+                <div className={`change ${getChangeClass(financialData.revenue?.change || 0)}`}>
+                  {formatPercentage(financialData.revenue?.change || 0)}
                   <span className="change-label">vs periodo precedente</span>
                 </div>
+                {financialData.revenue?.discounts_given > 0 && (
+                  <div className="additional-info">
+                    <small>Sconti applicati: {formatCurrency(financialData.revenue.discounts_given)}</small>
+                  </div>
+                )}
               </div>
               <div className="card-footer">
                 <span className="previous-amount">
-                  Precedente: {formatCurrency(financialData.revenue.previous)}
+                  Precedente: {formatCurrency(financialData.revenue?.previous || 0)}
                 </span>
+                {financialData.revenue?.breakdown && (
+                  <div className="payment-methods">
+                    <span>💰 {formatCurrency(financialData.revenue.breakdown.cash)}</span>
+                    <span>💳 {formatCurrency(financialData.revenue.breakdown.card)}</span>
+                    <span>🏧 {formatCurrency(financialData.revenue.breakdown.debit)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -352,21 +377,35 @@ export default function FinancialSection() {
               <div className="card-header">
                 <div className="card-icon">💸</div>
                 <div className="card-title">
-                  <h3>Costi</h3>
-                  <span className="card-subtitle">Spese operative</span>
+                  <h3>Costi Totali</h3>
+                  <span className="card-subtitle">
+                    Spese operative • {
+                      financialData.costs?.source === 'purchase_orders' ? 'Da ordini reali' :
+                      financialData.costs?.source === 'stock_movements' ? 'Da movimenti stock' :
+                      'Calcolato'
+                    }
+                  </span>
                 </div>
               </div>
               <div className="card-content">
-                <div className="amount">{formatCurrency(financialData.costs.current)}</div>
-                <div className={`change ${getChangeClass(-financialData.costs.change)}`}>
-                  {formatPercentage(financialData.costs.change)}
+                <div className="amount">{formatCurrency(financialData.costs?.current || 0)}</div>
+                <div className={`change ${getChangeClass(-(financialData.costs?.change || 0))}`}>
+                  {formatPercentage(financialData.costs?.change || 0)}
                   <span className="change-label">vs periodo precedente</span>
                 </div>
+                {financialData.summary?.cost_ratio && (
+                  <div className="additional-info">
+                    <small>Incidenza sui ricavi: {financialData.summary.cost_ratio.toFixed(1)}%</small>
+                  </div>
+                )}
               </div>
               <div className="card-footer">
                 <span className="previous-amount">
-                  Precedente: {formatCurrency(financialData.costs.previous)}
+                  Precedente: {formatCurrency(financialData.costs?.previous || 0)}
                 </span>
+                {financialData.costs?.purchase_orders_count > 0 && (
+                  <small>{financialData.costs.purchase_orders_count} ordini d'acquisto</small>
+                )}
               </div>
             </div>
 
@@ -374,20 +413,25 @@ export default function FinancialSection() {
               <div className="card-header">
                 <div className="card-icon">💰</div>
                 <div className="card-title">
-                  <h3>Profitto</h3>
-                  <span className="card-subtitle">Utile netto</span>
+                  <h3>Profitto Netto</h3>
+                  <span className="card-subtitle">Utile dopo costi</span>
                 </div>
               </div>
               <div className="card-content">
-                <div className="amount">{formatCurrency(financialData.profit.current)}</div>
-                <div className={`change ${getChangeClass(financialData.profit.change)}`}>
-                  {formatPercentage(financialData.profit.change)}
+                <div className="amount">{formatCurrency(financialData.profit?.current || 0)}</div>
+                <div className={`change ${getChangeClass(financialData.profit?.change || 0)}`}>
+                  {formatPercentage(financialData.profit?.change || 0)}
                   <span className="change-label">vs periodo precedente</span>
                 </div>
+                {financialData.profit?.margin_percentage !== undefined && (
+                  <div className="additional-info">
+                    <small>Margine di profitto: {financialData.profit.margin_percentage.toFixed(1)}%</small>
+                  </div>
+                )}
               </div>
               <div className="card-footer">
                 <span className="previous-amount">
-                  Precedente: {formatCurrency(financialData.profit.previous)}
+                  Precedente: {formatCurrency(financialData.profit?.previous || 0)}
                 </span>
               </div>
             </div>
@@ -396,258 +440,433 @@ export default function FinancialSection() {
               <div className="card-header">
                 <div className="card-icon">📊</div>
                 <div className="card-title">
-                  <h3>Margine</h3>
-                  <span className="card-subtitle">% di profitto</span>
+                  <h3>Margine %</h3>
+                  <span className="card-subtitle">Percentuale di profitto</span>
                 </div>
               </div>
               <div className="card-content">
-                <div className="amount">{financialData.margin.current.toFixed(1)}%</div>
-                <div className={`change ${getChangeClass(financialData.margin.change)}`}>
-                  {formatPercentage(financialData.margin.change)}
+                <div className="amount">{(financialData.margin?.current || 0).toFixed(1)}%</div>
+                <div className={`change ${getChangeClass(financialData.margin?.change || 0)}`}>
+                  {formatPercentage(financialData.margin?.change || 0)}
                   <span className="change-label">vs periodo precedente</span>
                 </div>
               </div>
               <div className="card-footer">
                 <span className="previous-amount">
-                  Precedente: {financialData.margin.previous.toFixed(1)}%
+                  Precedente: {(financialData.margin?.previous || 0).toFixed(1)}%
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Metriche secondarie */}
+          {/* ✅ REAL SECONDARY METRICS */}
           <div className="secondary-metrics">
             <div className="metric-card">
               <div className="metric-icon">🛒</div>
               <div className="metric-content">
-                <div className="metric-value">{financialData.orders.current}</div>
+                <div className="metric-value">{financialData.orders?.current || 0}</div>
                 <div className="metric-label">Ordini Totali</div>
-                <div className={`metric-change ${getChangeClass(financialData.orders.change)}`}>
-                  {formatPercentage(financialData.orders.change)}
+                <div className={`metric-change ${getChangeClass(financialData.orders?.change || 0)}`}>
+                  {formatPercentage(financialData.orders?.change || 0)}
                 </div>
+                {financialData.orders?.payment_breakdown && (
+                  <div className="metric-breakdown">
+                    <small>
+                      💰 {financialData.orders.payment_breakdown.cash} • 
+                      💳 {financialData.orders.payment_breakdown.card} • 
+                      🏧 {financialData.orders.payment_breakdown.debit}
+                    </small>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="metric-card">
               <div className="metric-icon">🎯</div>
               <div className="metric-content">
-                <div className="metric-value">{formatCurrency(financialData.avgOrder.current)}</div>
+                <div className="metric-value">{formatCurrency(financialData.avgOrder?.current || 0)}</div>
                 <div className="metric-label">Ordine Medio</div>
-                <div className={`metric-change ${getChangeClass(financialData.avgOrder.change)}`}>
-                  {formatPercentage(financialData.avgOrder.change)}
+                <div className={`metric-change ${getChangeClass(financialData.avgOrder?.change || 0)}`}>
+                  {formatPercentage(financialData.avgOrder?.change || 0)}
                 </div>
               </div>
             </div>
 
             <div className="metric-card">
-              <div className="metric-icon">⚡</div>
+              <div className="metric-icon">📈</div>
               <div className="metric-content">
                 <div className="metric-value">
-                  {formatCurrency(financialData.orders.current > 0 ? financialData.revenue.current / financialData.orders.current : 0)}
+                  {formatCurrency(selectedPeriod === 'month' ? (financialData.revenue?.current || 0) / 30 : 
+                                  selectedPeriod === 'week' ? (financialData.revenue?.current || 0) / 7 :
+                                  (financialData.revenue?.current || 0))}
                 </div>
-                <div className="metric-label">Revenue per Order</div>
+                <div className="metric-label">Revenue/Giorno</div>
                 <div className="metric-change positive">
-                  {formatPercentage(financialData.avgOrder.change)}
+                  Trend {(financialData.revenue?.change || 0) >= 0 ? 'positivo' : 'negativo'}
                 </div>
               </div>
             </div>
 
-            <div className="metric-card">
-              <div className="metric-icon">📅</div>
-              <div className="metric-content">
-                <div className="metric-value">
-                  {formatCurrency(selectedPeriod === 'month' ? financialData.revenue.current / 30 : 
-                                  selectedPeriod === 'week' ? financialData.revenue.current / 7 :
-                                  financialData.revenue.current)}
-                </div>
-                <div className="metric-label">Revenue Giornaliera</div>
-                <div className="metric-change positive">
-                  {formatPercentage(financialData.revenue.change / (selectedPeriod === 'month' ? 30 : selectedPeriod === 'week' ? 7 : 1))}
+            {financialData.summary?.profit_margin && (
+              <div className="metric-card">
+                <div className="metric-icon">💹</div>
+                <div className="metric-content">
+                  <div className="metric-value">{financialData.summary.profit_margin.toFixed(1)}%</div>
+                  <div className="metric-label">Profit Margin</div>
+                  <div className={`metric-change ${getChangeClass(financialData.summary.profit_margin - 40)}`}>
+                    Target: 40%
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </>
       )}
 
+      {/* ✅ TRENDS TAB - REAL DATA ANALYSIS */}
       {activeTab === 'trends' && (
         <div className="trends-section">
-          <div className="trend-chart">
-            <h3>📈 Andamento Ricavi (Ultimi {financialData.dailyTrend.length} giorni)</h3>
-            <div className="chart-container">
-              <div className="chart-placeholder">
-                <div className="chart-bars">
-                  {financialData.dailyTrend.slice(-10).map((day, index) => {
-                    const maxRevenue = Math.max(...financialData.dailyTrend.map(d => d.revenue));
-                    return (
-                      <div key={index} className="chart-bar">
-                        <div 
-                          className="bar" 
-                          style={{ height: `${(day.revenue / maxRevenue) * 100}%` }}
-                          title={`${day.date}: ${formatCurrency(day.revenue)} - ${day.orders} ordini`}
-                        ></div>
-                        <div className="bar-label">{day.date.split('-')[2]}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-          
           <div className="trend-analysis">
-            <h3>🔍 Analisi Tendenze</h3>
+            <h3>📈 Analisi Andamento 
+              {financialData.date_range && (
+                <small> ({financialData.date_range.start} → {financialData.date_range.end})</small>
+              )}
+            </h3>
             <div className="trend-insights">
               <div className="insight-card">
-                <span className="insight-icon">📈</span>
+                <span className="insight-icon">
+                  {(financialData.revenue?.change || 0) >= 0 ? '📈' : '📉'}
+                </span>
                 <div>
-                  <strong>Crescita Revenue</strong>
-                  <p>Trend {financialData.revenue.change >= 0 ? 'positivo' : 'negativo'} del {formatPercentage(financialData.revenue.change)} rispetto al periodo precedente</p>
+                  <strong>Andamento Revenue</strong>
+                  <p>
+                    {(financialData.revenue?.change || 0) >= 0 ? 'Crescita' : 'Diminuzione'} del {formatPercentage(financialData.revenue?.change || 0)} rispetto al periodo precedente
+                  </p>
+                  {financialData.revenue?.breakdown && (
+                    <small>
+                      Composizione: 
+                      💰 {((financialData.revenue.breakdown.cash / (financialData.revenue.current || 1)) * 100).toFixed(0)}% • 
+                      💳 {((financialData.revenue.breakdown.card / (financialData.revenue.current || 1)) * 100).toFixed(0)}% • 
+                      🏧 {((financialData.revenue.breakdown.debit / (financialData.revenue.current || 1)) * 100).toFixed(0)}%
+                    </small>
+                  )}
                 </div>
               </div>
+
               <div className="insight-card">
-                <span className="insight-icon">⚠️</span>
+                <span className="insight-icon">
+                  {(financialData.costs?.change || 0) <= 0 ? '✅' : '⚠️'}
+                </span>
                 <div>
                   <strong>Controllo Costi</strong>
-                  <p>I costi sono {financialData.costs.change >= 0 ? 'aumentati' : 'diminuiti'} del {formatPercentage(financialData.costs.change)}</p>
+                  <p>
+                    I costi sono {(financialData.costs?.change || 0) >= 0 ? 'aumentati' : 'diminuiti'} del {formatPercentage(Math.abs(financialData.costs?.change || 0))}
+                  </p>
+                  <small>
+                    Fonte: {
+                      financialData.costs?.source === 'purchase_orders' ? 'Ordini d\'acquisto reali' :
+                      financialData.costs?.source === 'stock_movements' ? 'Movimenti di magazzino' :
+                      'Calcolo automatico'
+                    }
+                  </small>
                 </div>
               </div>
+
               <div className="insight-card">
-                <span className="insight-icon">✅</span>
+                <span className="insight-icon">
+                  {(financialData.margin?.current || 0) >= 40 ? '✅' : (financialData.margin?.current || 0) >= 25 ? '⚠️' : '❌'}
+                </span>
                 <div>
-                  <strong>Margini {financialData.margin.current >= 40 ? 'Stabili' : 'Sotto Target'}</strong>
-                  <p>Il margine di profitto è al {financialData.margin.current.toFixed(1)}%</p>
+                  <strong>Performance Margini</strong>
+                  <p>
+                    Margine attuale: {(financialData.margin?.current || 0).toFixed(1)}% 
+                    {(financialData.margin?.current || 0) >= 40 ? ' (Eccellente)' : 
+                     (financialData.margin?.current || 0) >= 25 ? ' (Buono)' : ' (Da migliorare)'}
+                  </p>
+                  {financialData.summary?.cost_ratio && (
+                    <small>Rapporto costi/ricavi: {financialData.summary.cost_ratio.toFixed(1)}%</small>
+                  )}
+                </div>
+              </div>
+
+              {financialData.orders && (
+                <div className="insight-card">
+                  <span className="insight-icon">🛒</span>
+                  <div>
+                    <strong>Volume Ordini</strong>
+                    <p>
+                      {financialData.orders.current} ordini totali 
+                      ({(financialData.orders.change || 0) >= 0 ? '+' : ''}{formatPercentage(financialData.orders.change || 0)} vs precedente)
+                    </p>
+                    <small>
+                      Ordine medio: {formatCurrency(financialData.avgOrder?.current || 0)}
+                    </small>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ✅ PERIOD COMPARISON */}
+          {(financialData.revenue?.previous > 0 || financialData.costs?.previous > 0) && (
+            <div className="period-comparison">
+              <h3>⚖️ Confronto Periodi</h3>
+              <div className="comparison-table">
+                <div className="comparison-header">
+                  <span>Metrica</span>
+                  <span>Periodo Corrente</span>
+                  <span>Periodo Precedente</span>
+                  <span>Variazione</span>
+                </div>
+                <div className="comparison-row">
+                  <span>💵 Revenue</span>
+                  <span>{formatCurrency(financialData.revenue?.current || 0)}</span>
+                  <span>{formatCurrency(financialData.revenue?.previous || 0)}</span>
+                  <span className={getChangeClass(financialData.revenue?.change || 0)}>
+                    {formatPercentage(financialData.revenue?.change || 0)}
+                  </span>
+                </div>
+                <div className="comparison-row">
+                  <span>💸 Costi</span>
+                  <span>{formatCurrency(financialData.costs?.current || 0)}</span>
+                  <span>{formatCurrency(financialData.costs?.previous || 0)}</span>
+                  <span className={getChangeClass(-(financialData.costs?.change || 0))}>
+                    {formatPercentage(financialData.costs?.change || 0)}
+                  </span>
+                </div>
+                <div className="comparison-row">
+                  <span>💰 Profitto</span>
+                  <span>{formatCurrency(financialData.profit?.current || 0)}</span>
+                  <span>{formatCurrency(financialData.profit?.previous || 0)}</span>
+                  <span className={getChangeClass(financialData.profit?.change || 0)}>
+                    {formatPercentage(financialData.profit?.change || 0)}
+                  </span>
+                </div>
+                <div className="comparison-row">
+                  <span>📊 Margine %</span>
+                  <span>{(financialData.margin?.current || 0).toFixed(1)}%</span>
+                  <span>{(financialData.margin?.previous || 0).toFixed(1)}%</span>
+                  <span className={getChangeClass(financialData.margin?.change || 0)}>
+                    {formatPercentage(financialData.margin?.change || 0)}
+                  </span>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
+      {/* ✅ BREAKDOWN TAB - REAL EXPENSES FROM DB */}
       {activeTab === 'breakdown' && (
         <div className="breakdown-section">
           <div className="expenses-breakdown">
-            <h3>💸 Breakdown Costi</h3>
-            <div className="expense-items">
-              <div className="expense-item">
-                <span className="expense-label">🥘 Ingredienti</span>
-                <span className="expense-amount">{formatCurrency(financialData.expenses.ingredients)}</span>
-                <span className="expense-percentage">
-                  {((financialData.expenses.ingredients / financialData.costs.current) * 100).toFixed(1)}%
-                </span>
+            <h3>💸 Breakdown Costi Reali 
+              {financialData.costs?.source && (
+                <small> (Fonte: {
+                  financialData.costs.source === 'purchase_orders' ? 'Ordini d\'acquisto' :
+                  financialData.costs.source === 'stock_movements' ? 'Movimenti magazzino' :
+                  'Calcolo automatico'
+                })</small>
+              )}
+            </h3>
+            
+            {financialData.expenses ? (
+              <div className="expense-items">
+                {Object.entries(financialData.expenses).map(([category, amount]) => {
+                  const icons = {
+                    ingredients: '🥘',
+                    beverages: '🍺', 
+                    meat: '🥩',
+                    labor: '👥',
+                    utilities: '⚡',
+                    rent: '🏠',
+                    other: '📦'
+                  };
+                  
+                  const labels = {
+                    ingredients: 'Ingredienti',
+                    beverages: 'Bevande',
+                    meat: 'Carne', 
+                    labor: 'Personale',
+                    utilities: 'Utilities',
+                    rent: 'Affitto',
+                    other: 'Altri Costi'
+                  };
+                  
+                  if (amount > 0) {
+                    return (
+                      <div key={category} className="expense-item">
+                        <span className="expense-label">
+                          {icons[category] || '📦'} {labels[category] || category}
+                        </span>
+                        <span className="expense-amount">{formatCurrency(amount)}</span>
+                        <span className="expense-percentage">
+                          {(financialData.costs?.current || 0) > 0 ? 
+                            ((amount / (financialData.costs?.current || 1)) * 100).toFixed(1) : '0.0'}%
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
               </div>
-              <div className="expense-item">
-                <span className="expense-label">👥 Personale</span>
-                <span className="expense-amount">{formatCurrency(financialData.expenses.labor)}</span>
-                <span className="expense-percentage">
-                  {((financialData.expenses.labor / financialData.costs.current) * 100).toFixed(1)}%
-                </span>
+            ) : (
+              <div className="no-expense-data">
+                <span className="no-data-icon">📊</span>
+                <p>Nessun dettaglio costi disponibile</p>
+                <small>I dati verranno popolati automaticamente con ordini e movimenti</small>
               </div>
-              <div className="expense-item">
-                <span className="expense-label">⚡ Utilities</span>
-                <span className="expense-amount">{formatCurrency(financialData.expenses.utilities)}</span>
-                <span className="expense-percentage">
-                  {((financialData.expenses.utilities / financialData.costs.current) * 100).toFixed(1)}%
-                </span>
-              </div>
-              <div className="expense-item">
-                <span className="expense-label">🏠 Affitto</span>
-                <span className="expense-amount">{formatCurrency(financialData.expenses.rent)}</span>
-                <span className="expense-percentage">
-                  {((financialData.expenses.rent / financialData.costs.current) * 100).toFixed(1)}%
-                </span>
-              </div>
-              <div className="expense-item">
-                <span className="expense-label">📦 Altri</span>
-                <span className="expense-amount">{formatCurrency(financialData.expenses.other)}</span>
-                <span className="expense-percentage">
-                  {((financialData.expenses.other / financialData.costs.current) * 100).toFixed(1)}%
-                </span>
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="top-products">
-            <h3>🏆 Top Prodotti per Revenue</h3>
-            <div className="product-list">
-              {financialData.topProducts.map((product, index) => (
-                <div key={index} className="product-item">
-                  <div className="product-rank">#{index + 1}</div>
-                  <div className="product-info">
-                    <span className="product-name">{product.name}</span>
-                    <span className="product-revenue">{formatCurrency(product.revenue)}</span>
-                  </div>
-                  <div className="product-margin">
-                    <span className="margin-value">{product.margin.toFixed(1)}%</span>
-                    <span className="margin-label">margine</span>
-                  </div>
+          {/* ✅ REAL COST ANALYSIS */}
+          {financialData.expenses && Object.values(financialData.expenses).some(amount => amount > 0) && (
+            <div className="cost-analysis">
+              <h3>🔍 Analisi Costi</h3>
+              <div className="analysis-insights">
+                <div className="analysis-item">
+                  <span className="analysis-label">Categoria Principale:</span>
+                  <span className="analysis-value">
+                    {(() => {
+                      const maxCategory = Object.entries(financialData.expenses)
+                        .reduce((max, [cat, amount]) => amount > max.amount ? {category: cat, amount} : max, {category: '', amount: 0});
+                      const labels = {
+                        ingredients: '🥘 Ingredienti',
+                        beverages: '🍺 Bevande',
+                        meat: '🥩 Carne',
+                        labor: '👥 Personale',
+                        utilities: '⚡ Utilities',
+                        rent: '🏠 Affitto',
+                        other: '📦 Altri'
+                      };
+                      return labels[maxCategory.category] || maxCategory.category;
+                    })()}
+                  </span>
                 </div>
-              ))}
+                
+                <div className="analysis-item">
+                  <span className="analysis-label">Incidenza sui Ricavi:</span>
+                  <span className="analysis-value">
+                    {financialData.summary?.cost_ratio ? 
+                      `${financialData.summary.cost_ratio.toFixed(1)}%` : 
+                      `${(((financialData.costs?.current || 0) / (financialData.revenue?.current || 1)) * 100).toFixed(1)}%`
+                    }
+                  </span>
+                </div>
+
+                <div className="analysis-item">
+                  <span className="analysis-label">Status Controllo:</span>
+                  <span className={`analysis-value ${
+                    (financialData.summary?.cost_ratio || 0) <= 60 ? 'positive' : 
+                    (financialData.summary?.cost_ratio || 0) <= 70 ? 'warning' : 'negative'
+                  }`}>
+                    {(financialData.summary?.cost_ratio || 0) <= 60 ? '✅ Ottimale' : 
+                     (financialData.summary?.cost_ratio || 0) <= 70 ? '⚠️ Accettabile' : '❌ Critico'}
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
-      {activeTab === 'kpi' && (
-        <div className="kpi-section">
-          <h3>🎯 Key Performance Indicators</h3>
-          <div className="kpi-grid">
-            <div className="kpi-card">
-              <div className="kpi-header">
-                <span className="kpi-title">Revenue Target</span>
-                <span className={`kpi-status ${getKPIStatus(financialData.revenue.current, 16000)}`}>
-                  {((financialData.revenue.current / 16000) * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div className="kpi-progress">
-                <div 
-                  className="kpi-bar" 
-                  style={{ width: `${Math.min((financialData.revenue.current / 16000) * 100, 100)}%` }}
-                ></div>
-              </div>
-              <div className="kpi-details">
-                <span>Target: {formatCurrency(16000)}</span>
-                <span>Attuale: {formatCurrency(financialData.revenue.current)}</span>
-              </div>
-            </div>
+      {/* ✅ TRANSACTIONS TAB - REAL TRANSACTION DATA */}
+      {activeTab === 'transactions' && (
+        <div className="transactions-section">
+          <h3>🧾 Riepilogo Transazioni</h3>
+          
+          {financialData.summary ? (
+            <div className="transactions-summary">
+              <div className="summary-cards">
+                <div className="summary-card">
+                  <span className="summary-icon">📊</span>
+                  <div className="summary-content">
+                    <div className="summary-number">{financialData.summary.total_transactions || 0}</div>
+                    <div className="summary-label">Transazioni Totali</div>
+                  </div>
+                </div>
 
-            <div className="kpi-card">
-              <div className="kpi-header">
-                <span className="kpi-title">Costi Target</span>
-                <span className={`kpi-status ${getKPIStatus(8000, financialData.costs.current)}`}>
-                  {((8000 / financialData.costs.current) * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div className="kpi-progress">
-                <div 
-                  className="kpi-bar" 
-                  style={{ width: `${Math.min((financialData.costs.current / 8000) * 100, 100)}%` }}
-                ></div>
-              </div>
-              <div className="kpi-details">
-                <span>Target: {formatCurrency(8000)}</span>
-                <span>Attuale: {formatCurrency(financialData.costs.current)}</span>
-              </div>
-            </div>
+                <div className="summary-card">
+                  <span className="summary-icon">💰</span>
+                  <div className="summary-content">
+                    <div className="summary-number">{formatCurrency(financialData.summary.gross_revenue || 0)}</div>
+                    <div className="summary-label">Revenue Lorda</div>
+                  </div>
+                </div>
 
-            <div className="kpi-card">
-              <div className="kpi-header">
-                <span className="kpi-title">Margine Target</span>
-                <span className={`kpi-status ${getKPIStatus(financialData.margin.current, 50)}`}>
-                  {((financialData.margin.current / 50) * 100).toFixed(0)}%
-                </span>
+                <div className="summary-card">
+                  <span className="summary-icon">💎</span>
+                  <div className="summary-content">
+                    <div className="summary-number">{formatCurrency(financialData.summary.net_profit || 0)}</div>
+                    <div className="summary-label">Profitto Netto</div>
+                  </div>
+                </div>
+
+                <div className="summary-card">
+                  <span className="summary-icon">📈</span>
+                  <div className="summary-content">
+                    <div className="summary-number">
+                      {(financialData.summary.profit_margin || 0).toFixed(1)}%
+                    </div>
+                    <div className="summary-label">Profit Margin</div>
+                  </div>
+                </div>
               </div>
-              <div className="kpi-progress">
-                <div 
-                  className="kpi-bar" 
-                  style={{ width: `${Math.min((financialData.margin.current / 50) * 100, 100)}%` }}
-                ></div>
-              </div>
-              <div className="kpi-details">
-                <span>Target: 50.0%</span>
-                <span>Attuale: {financialData.margin.current.toFixed(1)}%</span>
-              </div>
+
+              {/* Payment Methods Breakdown */}
+              {financialData.summary.payment_methods && (
+                <div className="payment-breakdown">
+                  <h4>💳 Metodi di Pagamento</h4>
+                  <div className="payment-methods">
+                    {Object.entries(financialData.summary.payment_methods).map(([method, amount]) => {
+                      const icons = {
+                        contanti: '💰',
+                        carta: '💳', 
+                        bancomat: '🏧',
+                        card: '💳',
+                        cash: '💰',
+                        debit: '🏧'
+                      };
+                      
+                      return (
+                        <div key={method} className="payment-method-item">
+                          <span className="payment-icon">{icons[method] || '💳'}</span>
+                          <span className="payment-method">{method.charAt(0).toUpperCase() + method.slice(1)}</span>
+                          <span className="payment-amount">{formatCurrency(amount)}</span>
+                          <span className="payment-percentage">
+                            {(financialData.revenue?.current > 0 ? 
+                              (amount / financialData.revenue.current * 100).toFixed(1) : '0.0')}%
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
+          ) : (
+            <div className="no-transactions-data">
+              <span className="no-data-icon">🧾</span>
+              <p>Nessun dato transazione disponibile</p>
+              <small>I dati appariranno automaticamente con le prime vendite</small>
+            </div>
+          )}
+
+          <div className="transactions-actions">
+            <button 
+              className="btn primary"
+              onClick={fetchDetailedReport}
+              disabled={!financialData.summary?.total_transactions}
+            >
+              📄 Report Completo
+            </button>
+            <button 
+              className="btn secondary"
+              onClick={() => exportFinancialData('json')}
+              disabled={!financialData.summary?.total_transactions}
+            >
+              💾 Esporta Dati
+            </button>
           </div>
         </div>
       )}
@@ -657,6 +876,7 @@ export default function FinancialSection() {
         <button 
           className="btn primary"
           onClick={fetchDetailedReport}
+          disabled={!financialData.summary?.total_transactions}
         >
           📊 Report Dettagliato
         </button>
@@ -668,25 +888,20 @@ export default function FinancialSection() {
         </button>
         <button 
           className="btn secondary"
-          onClick={() => exportFinancialData('excel')}
+          onClick={() => exportFinancialData('json')}
+          disabled={!financialData}
         >
-          📁 Esporta Excel
-        </button>
-        <button 
-          className="btn secondary"
-          onClick={() => exportFinancialData('pdf')}
-        >
-          📄 Esporta PDF
+          📁 Esporta JSON
         </button>
         <button 
           className="btn secondary"
           onClick={() => setShowBudgetModal(true)}
         >
-          ⚙️ Budget Settings
+          ⚙️ Impostazioni
         </button>
       </div>
 
-      {/* Modal Report Dettagliato */}
+      {/* ✅ MODALS WITH REAL DATA ONLY */}
       {showDetailsModal && detailsData && (
         <DetailedReportModal 
           data={detailsData}
@@ -697,14 +912,14 @@ export default function FinancialSection() {
         />
       )}
 
-      {/* Modal Budget Settings */}
       {showBudgetModal && (
         <BudgetSettingsModal 
+          currentData={financialData}
           onClose={() => setShowBudgetModal(false)}
           onSave={(budgetData) => {
             console.log('Budget salvato:', budgetData);
             setShowBudgetModal(false);
-            // TODO: Implementare salvataggio budget
+            alert('Funzione salvataggio budget in sviluppo');
           }}
         />
       )}
@@ -712,80 +927,128 @@ export default function FinancialSection() {
   );
 }
 
-// Modal Report Dettagliato
+// ✅ ENHANCED DETAILED REPORT MODAL - REAL DATA ONLY
 function DetailedReportModal({ data, onClose, period, date, formatCurrency }) {
   return (
     <div className="modal-overlay">
       <div className="modal-content large">
         <div className="modal-header">
-          <h3 className="modal-title">📊 Report Dettagliato - {date}</h3>
+          <h3 className="modal-title">
+            📊 Report Dettagliato - Database Reale
+            <small> • {period} • {date}</small>
+            {data.date_range && (
+              <span> ({data.date_range.start} → {data.date_range.end})</span>
+            )}
+          </h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         
         <div className="modal-body">
           <div className="report-section">
-            <h4>💰 Riepilogo Finanziario</h4>
+            <h4>💰 Riepilogo Database</h4>
             <div className="report-grid">
               <div className="report-item">
-                <span className="report-label">Ricavi Lordi:</span>
-                <span className="report-value">{formatCurrency(data.summary?.totalRevenue || 0)}</span>
+                <span className="report-label">📊 Fonte Dati:</span>
+                <span className="report-value">Database reale - {data.summary?.total_orders || 0} ordini</span>
               </div>
               <div className="report-item">
-                <span className="report-label">Ordini Totali:</span>
-                <span className="report-value">{data.summary?.totalOrders || 0}</span>
+                <span className="report-label">💵 Ricavi Lordi:</span>
+                <span className="report-value">{formatCurrency(data.summary?.total_revenue || 0)}</span>
               </div>
               <div className="report-item">
-                <span className="report-label">Ordine Medio:</span>
-                <span className="report-value">{formatCurrency(data.summary?.avgOrder || 0)}</span>
+                <span className="report-label">💰 Ordine Medio:</span>
+                <span className="report-value">{formatCurrency(data.summary?.avg_order_value || 0)}</span>
               </div>
-            </div>
-          </div>
-
-          <div className="report-section">
-            <h4>📋 Dettaglio Ordini</h4>
-            <div className="orders-table">
-              {data.orders && data.orders.length > 0 ? (
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Data</th>
-                      <th>Totale</th>
-                      <th>Stato</th>
-                      <th>Pagamento</th>
-                      <th>Articoli</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.orders.slice(0, 10).map(order => (
-                      <tr key={order.id}>
-                        <td>#{order.id}</td>
-                        <td>{new Date(order.created_at).toLocaleString('it-IT')}</td>
-                        <td>{formatCurrency(order.total)}</td>
-                        <td>
-                          <span className={`status ${order.status}`}>
-                            {order.status}
-                          </span>
-                        </td>
-                        <td>{order.payment_method || 'N/A'}</td>
-                        <td>{order.items_count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <p className="no-data">Nessun ordine trovato per il periodo selezionato</p>
+              {data.summary?.total_tax > 0 && (
+                <div className="report-item">
+                  <span className="report-label">🏛️ IVA Totale:</span>
+                  <span className="report-value">{formatCurrency(data.summary.total_tax)}</span>
+                </div>
+              )}
+              {data.summary?.total_discounts > 0 && (
+                <div className="report-item">
+                  <span className="report-label">💸 Sconti:</span>
+                  <span className="report-value">{formatCurrency(data.summary.total_discounts)}</span>
+                </div>
+              )}
+              {data.summary?.payment_methods && (
+                <>
+                  {Object.entries(data.summary.payment_methods).map(([method, amount]) => (
+                    <div key={method} className="report-item">
+                      <span className="report-label">
+                        {method === 'contanti' ? '💰' : method === 'carta' ? '💳' : '🏧'} {method}:
+                      </span>
+                      <span className="report-value">{formatCurrency(amount)}</span>
+                    </div>
+                  ))}
+                </>
               )}
             </div>
           </div>
+
+          {data.orders && data.orders.length > 0 ? (
+            <div className="report-section">
+              <h4>🧾 Ordini Database ({data.orders.length} record)</h4>
+              <div className="orders-table">
+                <div className="table-container">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Data/Ora</th>
+                        <th>Tavolo</th>
+                        <th>Cliente</th>
+                        <th>Totale</th>
+                        <th>Stato</th>
+                        <th>Pagamento</th>
+                        <th>Articoli</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.orders.slice(0, 20).map(order => (
+                        <tr key={order.id}>
+                          <td>#{order.id}</td>
+                          <td>{new Date(order.created_at).toLocaleString('it-IT')}</td>
+                          <td>{order.table_number ? `Tavolo ${order.table_number}` : '-'}</td>
+                          <td>{order.customer_name || '-'}</td>
+                          <td>{formatCurrency(order.total)}</td>
+                          <td>
+                            <span className={`status ${order.status}`}>
+                              {order.status}
+                            </span>
+                          </td>
+                          <td>{order.payment_method || 'N/A'}</td>
+                          <td>{order.items_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {data.orders.length > 20 && (
+                    <p className="table-note">
+                      Mostrati 20 di {data.orders.length} ordini dal database
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="no-orders">
+              <span className="no-data-icon">📊</span>
+              <p>Nessun ordine nel database per questo periodo</p>
+            </div>
+          )}
         </div>
 
         <div className="modal-actions">
           <button className="btn secondary" onClick={onClose}>
             Chiudi
           </button>
-          <button className="btn primary">
-            📄 Esporta Report
+          <button 
+            className="btn primary" 
+            onClick={() => alert('Export da database reale in sviluppo')}
+            disabled={!data.orders || data.orders.length === 0}
+          >
+            📄 Esporta Database
           </button>
         </div>
       </div>
@@ -793,17 +1056,17 @@ function DetailedReportModal({ data, onClose, period, date, formatCurrency }) {
   );
 }
 
-// Modal Budget Settings (rimane uguale)
-function BudgetSettingsModal({ onClose, onSave }) {
+// ✅ BUDGET MODAL WITH CURRENT REAL DATA CONTEXT
+function BudgetSettingsModal({ currentData, onClose, onSave }) {
   const [budgetData, setBudgetData] = useState({
-    monthlyRevenue: 16000,
-    monthlyCosts: 8000,
-    targetMargin: 50,
-    ingredientsBudget: 4000,
-    laborBudget: 2000,
-    utilitiesBudget: 900,
-    rentBudget: 1200,
-    otherBudget: 900
+    monthlyRevenue: currentData?.revenue?.current ? Math.round(currentData.revenue.current * 1.1) : 16000,
+    monthlyCosts: currentData?.costs?.current ? Math.round(currentData.costs.current * 0.95) : 8000,
+    targetMargin: currentData?.margin?.current ? Math.round(currentData.margin.current + 5) : 50,
+    ingredientsBudget: currentData?.expenses?.ingredients ? Math.round(currentData.expenses.ingredients * 0.9) : 4000,
+    laborBudget: currentData?.expenses?.labor ? Math.round(currentData.expenses.labor * 1.05) : 2000,
+    utilitiesBudget: currentData?.expenses?.utilities ? Math.round(currentData.expenses.utilities * 1.02) : 900,
+    rentBudget: currentData?.expenses?.rent || 1200,
+    otherBudget: currentData?.expenses?.other ? Math.round(currentData.expenses.other * 0.95) : 900
   });
 
   const handleSubmit = (e) => {
@@ -823,17 +1086,40 @@ function BudgetSettingsModal({ onClose, onSave }) {
     <div className="modal-overlay">
       <div className="modal-content">
         <div className="modal-header">
-          <h3 className="modal-title">⚙️ Impostazioni Budget</h3>
+          <h3 className="modal-title">⚙️ Impostazioni Budget 
+            <small> (Basato su dati reali correnti)</small>
+          </h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
+            {/* Current vs Target Comparison */}
+            {currentData && (
+              <div className="current-vs-target">
+                <h4>📊 Dati Attuali vs Target</h4>
+                <div className="comparison-grid">
+                  <div className="comparison-item">
+                    <span>Revenue Attuale:</span>
+                    <span>{new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(currentData.revenue?.current || 0)}</span>
+                  </div>
+                  <div className="comparison-item">
+                    <span>Costi Attuali:</span>
+                    <span>{new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(currentData.costs?.current || 0)}</span>
+                  </div>
+                  <div className="comparison-item">
+                    <span>Margine Attuale:</span>
+                    <span>{(currentData.margin?.current || 0).toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="form-section">
-              <h4>🎯 Target Principali</h4>
+              <h4>🎯 Target Futuri</h4>
               <div className="form-grid">
                 <div className="form-group">
-                  <label className="form-label">Revenue Mensile Target</label>
+                  <label className="form-label">Revenue Target</label>
                   <input
                     type="number"
                     name="monthlyRevenue"
@@ -843,9 +1129,10 @@ function BudgetSettingsModal({ onClose, onSave }) {
                     min="0"
                     step="100"
                   />
+                  <small>Suggerito: +10% rispetto attuale</small>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Costi Mensili Target</label>
+                  <label className="form-label">Costi Target</label>
                   <input
                     type="number"
                     name="monthlyCosts"
@@ -855,6 +1142,7 @@ function BudgetSettingsModal({ onClose, onSave }) {
                     min="0"
                     step="100"
                   />
+                  <small>Suggerito: -5% rispetto attuale</small>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Margine Target (%)</label>
@@ -873,7 +1161,7 @@ function BudgetSettingsModal({ onClose, onSave }) {
             </div>
 
             <div className="form-section">
-              <h4>💸 Budget per Categoria</h4>
+              <h4>💸 Budget Dettagliati</h4>
               <div className="form-grid">
                 <div className="form-group">
                   <label className="form-label">🥘 Ingredienti</label>
