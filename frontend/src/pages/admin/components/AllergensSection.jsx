@@ -1,68 +1,105 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "../../../context/AuthContext";
 import "./AllergensSection.css";
 
 export default function AllergensSection() {
+  const { isAuthenticated } = useAuth();
   const [allergens, setAllergens] = useState([]);
   const [filteredAllergens, setFilteredAllergens] = useState([]);
+  const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAllergen, setEditingAllergen] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+  const [viewMode, setViewMode] = useState('grid');
 
-  // Carica allergeni dal backend
+  // ✅ ALIGNED API CALLS
   useEffect(() => {
-    fetchAllergens();
-  }, []);
+    if (isAuthenticated) {
+      fetchAllergens();
+      fetchStats();
+    }
+  }, [isAuthenticated]);
 
-  // Filtra allergeni quando cambiano i filtri
   useEffect(() => {
     filterAllergens();
-  }, [allergens, searchTerm, filterType]);
+  }, [allergens, searchTerm, activeFilter]);
 
   const fetchAllergens = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
+      // ✅ CORRECT API CALL - NO BEARER TOKEN
       const response = await fetch('/api/allergens', {
+        method: 'GET',
+        credentials: 'include', // ✅ SESSION-BASED AUTH
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         }
       });
 
       if (!response.ok) {
-        throw new Error('Errore nel caricamento degli allergeni');
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
-      setAllergens(data);
-      setError(null);
+      
+      // ✅ HANDLE CORRECT RESPONSE FORMAT
+      if (data.success && data.allergens) {
+        setAllergens(data.allergens);
+      } else {
+        throw new Error(data.error || 'Invalid response format');
+      }
+      
     } catch (err) {
-      console.error('Errore:', err);
+      console.error('❌ Error fetching allergens:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchStats = async () => {
+    try {
+      const response = await fetch('/api/allergens/stats', {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setStats(data.stats);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+    }
+  };
+
   const filterAllergens = () => {
     let filtered = allergens;
 
-    // Filtro per testo
+    // Search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(allergen =>
         allergen.name.toLowerCase().includes(term) ||
-        allergen.description?.toLowerCase().includes(term) ||
-        allergen.code?.toLowerCase().includes(term)
+        (allergen.description && allergen.description.toLowerCase().includes(term))
       );
     }
 
-    // Filtro per tipo
-    if (filterType) {
-      filtered = filtered.filter(allergen => allergen.type === filterType);
+    // Active filter
+    if (activeFilter === 'active') {
+      filtered = filtered.filter(allergen => allergen.active);
+    } else if (activeFilter === 'inactive') {
+      filtered = filtered.filter(allergen => !allergen.active);
     }
 
     setFilteredAllergens(filtered);
@@ -72,23 +109,28 @@ export default function AllergensSection() {
     try {
       const response = await fetch('/api/allergens', {
         method: 'POST',
+        credentials: 'include',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(allergenData)
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Errore nella creazione dell\'allergene');
+        throw new Error(errorData.error || 'Errore nella creazione');
       }
 
-      const newAllergen = await response.json();
-      setAllergens([...allergens, newAllergen]);
-      return true;
+      const data = await response.json();
+      if (data.success) {
+        // Ricarica la lista
+        await fetchAllergens();
+        await fetchStats();
+        return true;
+      }
+      throw new Error(data.error || 'Errore nella creazione');
     } catch (err) {
-      console.error('Errore:', err);
+      console.error('❌ Error creating allergen:', err);
       setError(err.message);
       return false;
     }
@@ -97,24 +139,28 @@ export default function AllergensSection() {
   const updateAllergen = async (id, allergenData) => {
     try {
       const response = await fetch(`/api/allergens/${id}`, {
-        method: 'PUT',
+        method: 'PATCH', // ✅ CORRECT METHOD
+        credentials: 'include',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(allergenData)
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Errore nell\'aggiornamento dell\'allergene');
+        throw new Error(errorData.error || 'Errore nell\'aggiornamento');
       }
 
-      const updatedAllergen = await response.json();
-      setAllergens(allergens.map(a => a.id === id ? updatedAllergen : a));
-      return true;
+      const data = await response.json();
+      if (data.success) {
+        await fetchAllergens();
+        await fetchStats();
+        return true;
+      }
+      throw new Error(data.error || 'Errore nell\'aggiornamento');
     } catch (err) {
-      console.error('Errore:', err);
+      console.error('❌ Error updating allergen:', err);
       setError(err.message);
       return false;
     }
@@ -124,105 +170,45 @@ export default function AllergensSection() {
     try {
       const response = await fetch(`/api/allergens/${id}`, {
         method: 'DELETE',
+        credentials: 'include',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         }
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Errore nell\'eliminazione dell\'allergene');
+        throw new Error(errorData.error || 'Errore nell\'eliminazione');
       }
 
-      setAllergens(allergens.filter(a => a.id !== id));
-      return true;
+      const data = await response.json();
+      if (data.success) {
+        await fetchAllergens();
+        await fetchStats();
+        return true;
+      }
+      throw new Error(data.error || 'Errore nell\'eliminazione');
     } catch (err) {
-      console.error('Errore:', err);
+      console.error('❌ Error deleting allergen:', err);
       setError(err.message);
       return false;
     }
   };
 
-  const getAllergenIcon = (type) => {
-    const icons = {
-      'cereali': '🌾',
-      'crostacei': '🦐',
-      'uova': '🥚',
-      'pesce': '🐟',
-      'arachidi': '🥜',
-      'soia': '🫘',
-      'latte': '🥛',
-      'frutta_guscio': '🌰',
-      'sedano': '🥬',
-      'senape': '🌿',
-      'sesamo': '🌰',
-      'solfiti': '⚗️',
-      'lupi': '🌾',
-      'molluschi': '🐚',
-      'altro': '⚠️'
-    };
-    return icons[type] || '⚠️';
-  };
-
-  const getAllergenTypeLabel = (type) => {
-    const labels = {
-      'cereali': 'Cereali contenenti glutine',
-      'crostacei': 'Crostacei',
-      'uova': 'Uova',
-      'pesce': 'Pesce',
-      'arachidi': 'Arachidi',
-      'soia': 'Soia',
-      'latte': 'Latte e derivati',
-      'frutta_guscio': 'Frutta a guscio',
-      'sedano': 'Sedano',
-      'senape': 'Senape',
-      'sesamo': 'Semi di sesamo',
-      'solfiti': 'Solfiti',
-      'lupi': 'Lupini',
-      'molluschi': 'Molluschi',
-      'altro': 'Altro'
-    };
-    return labels[type] || type;
-  };
-
-  const getRiskLevelColor = (level) => {
-    const colors = {
-      'basso': 'success',
-      'medio': 'warning',
-      'alto': 'danger',
-      'critico': 'critical'
-    };
-    return colors[level] || 'secondary';
-  };
-
-  const getRiskLevelIcon = (level) => {
-    const icons = {
-      'basso': '🟢',
-      'medio': '🟡',
-      'alto': '🟠',
-      'critico': '🔴'
-    };
-    return icons[level] || '⚪';
-  };
-
-  const getUniqueTypes = () => {
-    return [...new Set(allergens.map(a => a.type))];
-  };
-
-  const getStatistics = () => {
+  // ✅ SIMPLIFIED STATISTICS (ALIGNED WITH BACKEND)
+  const getLocalStats = () => {
     const total = allergens.length;
-    const byRisk = allergens.reduce((acc, allergen) => {
-      acc[allergen.risk_level] = (acc[allergen.risk_level] || 0) + 1;
-      return acc;
-    }, {});
+    const active = allergens.filter(a => a.active).length;
+    const inactive = total - active;
     
-    const activeCount = allergens.filter(a => a.is_active).length;
-    const inactiveCount = total - activeCount;
-
-    return { total, byRisk, activeCount, inactiveCount };
+    return {
+      total_allergens: total,
+      active_allergens: active,
+      inactive_allergens: inactive
+    };
   };
 
-  const stats = getStatistics();
+  const localStats = getLocalStats();
 
   if (loading) {
     return (
@@ -242,7 +228,9 @@ export default function AllergensSection() {
         <div>
           <h2>⚠️ Gestione Allergeni</h2>
           <p className="section-subtitle">
-            {stats.total} allergeni totali • {stats.activeCount} attivi • {stats.inactiveCount} inattivi
+            {localStats.total_allergens} allergeni totali • 
+            {localStats.active_allergens} attivi • 
+            {localStats.inactive_allergens} inattivi
           </p>
         </div>
         <div className="header-actions">
@@ -271,51 +259,46 @@ export default function AllergensSection() {
         </div>
       </div>
 
-      {/* Statistiche rapide */}
+      {/* ✅ ALIGNED STATISTICS */}
       <div className="allergens-stats">
-        <div className="stat-card mini success">
-          <span className="stat-icon">🟢</span>
+        <div className="stat-card primary">
+          <span className="stat-icon">⚠️</span>
           <div>
-            <div className="stat-number">{stats.byRisk.basso || 0}</div>
-            <div className="stat-label">Basso Rischio</div>
+            <div className="stat-number">{localStats.total_allergens}</div>
+            <div className="stat-label">Totali</div>
           </div>
         </div>
-        <div className="stat-card mini warning">
-          <span className="stat-icon">🟡</span>
-          <div>
-            <div className="stat-number">{stats.byRisk.medio || 0}</div>
-            <div className="stat-label">Medio Rischio</div>
-          </div>
-        </div>
-        <div className="stat-card mini danger">
-          <span className="stat-icon">🟠</span>
-          <div>
-            <div className="stat-number">{stats.byRisk.alto || 0}</div>
-            <div className="stat-label">Alto Rischio</div>
-          </div>
-        </div>
-        <div className="stat-card mini critical">
-          <span className="stat-icon">🔴</span>
-          <div>
-            <div className="stat-number">{stats.byRisk.critico || 0}</div>
-            <div className="stat-label">Critico</div>
-          </div>
-        </div>
-        <div className="stat-card mini info">
+        <div className="stat-card success">
           <span className="stat-icon">✅</span>
           <div>
-            <div className="stat-number">{stats.activeCount}</div>
+            <div className="stat-number">{localStats.active_allergens}</div>
             <div className="stat-label">Attivi</div>
           </div>
         </div>
+        <div className="stat-card secondary">
+          <span className="stat-icon">❌</span>
+          <div>
+            <div className="stat-number">{localStats.inactive_allergens}</div>
+            <div className="stat-label">Inattivi</div>
+          </div>
+        </div>
+        {stats.products_with_allergens && (
+          <div className="stat-card info">
+            <span className="stat-icon">🔗</span>
+            <div>
+              <div className="stat-number">{stats.products_with_allergens}</div>
+              <div className="stat-label">Prodotti Collegati</div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Filtri */}
+      {/* ✅ SIMPLIFIED FILTERS */}
       <div className="filters">
         <div className="search-container">
           <input
             type="text"
-            placeholder="Cerca allergene per nome, descrizione, codice..."
+            placeholder="Cerca allergene per nome o descrizione..."
             className="search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -325,23 +308,20 @@ export default function AllergensSection() {
         
         <select 
           className="filter-select"
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
+          value={activeFilter}
+          onChange={(e) => setActiveFilter(e.target.value)}
         >
-          <option value="">Tutti i tipi</option>
-          {getUniqueTypes().map(type => (
-            <option key={type} value={type}>
-              {getAllergenIcon(type)} {getAllergenTypeLabel(type)}
-            </option>
-          ))}
+          <option value="all">Tutti gli stati</option>
+          <option value="active">Solo attivi</option>
+          <option value="inactive">Solo inattivi</option>
         </select>
 
-        {(searchTerm || filterType) && (
+        {(searchTerm || activeFilter !== 'all') && (
           <button 
             className="btn secondary clear-filters"
             onClick={() => {
               setSearchTerm("");
-              setFilterType("");
+              setActiveFilter("all");
             }}
           >
             Pulisci Filtri
@@ -349,7 +329,7 @@ export default function AllergensSection() {
         )}
       </div>
 
-      {/* Messaggi di errore */}
+      {/* Error Display */}
       {error && (
         <div className="error-banner">
           <span className="error-icon">❌</span>
@@ -363,7 +343,7 @@ export default function AllergensSection() {
         </div>
       )}
 
-      {/* Lista Allergeni */}
+      {/* ✅ ALIGNED ALLERGENS LIST */}
       {filteredAllergens.length === 0 ? (
         <div className="empty-state">
           <span className="empty-icon">⚠️</span>
@@ -386,48 +366,41 @@ export default function AllergensSection() {
       ) : (
         <>
           {viewMode === 'grid' ? (
-            /* Vista Griglia */
+            /* ✅ ALIGNED GRID VIEW */
             <div className="allergens-grid">
               {filteredAllergens.map(allergen => (
-                <div key={allergen.id} className={`allergen-card ${allergen.is_active ? 'active' : 'inactive'}`}>
+                <div key={allergen.id} className={`allergen-card ${allergen.active ? 'active' : 'inactive'}`}>
                   <div className="allergen-header">
                     <div className="allergen-title">
-                      <span className="allergen-icon">
-                        {getAllergenIcon(allergen.type)}
+                      <span 
+                        className="allergen-icon"
+                        style={{ backgroundColor: allergen.color }}
+                      >
+                        {allergen.icon}
                       </span>
                       <h3>{allergen.name}</h3>
                     </div>
                     <div className="allergen-badges">
-                      <span className={`risk-badge ${getRiskLevelColor(allergen.risk_level)}`}>
-                        {getRiskLevelIcon(allergen.risk_level)} {allergen.risk_level}
-                      </span>
-                      <span className={`status-badge ${allergen.is_active ? 'active' : 'inactive'}`}>
-                        {allergen.is_active ? '✅ Attivo' : '❌ Inattivo'}
+                      <span className={`status-badge ${allergen.active ? 'active' : 'inactive'}`}>
+                        {allergen.active ? '✅ Attivo' : '❌ Inattivo'}
                       </span>
                     </div>
                   </div>
 
                   <div className="allergen-info">
-                    <div className="info-item">
-                      <span className="label">Tipo:</span>
-                      <span className="value">{getAllergenTypeLabel(allergen.type)}</span>
-                    </div>
-                    <div className="info-item">
-                      <span className="label">Codice:</span>
-                      <span className="value">{allergen.code || '-'}</span>
-                    </div>
                     {allergen.description && (
                       <div className="allergen-description">
                         <span className="description-icon">📝</span>
                         <span className="description-text">{allergen.description}</span>
                       </div>
                     )}
-                    {allergen.regulations && (
-                      <div className="allergen-regulations">
-                        <span className="regulations-icon">📋</span>
-                        <span className="regulations-text">{allergen.regulations}</span>
-                      </div>
-                    )}
+                    
+                    <div className="info-item">
+                      <span className="label">Creato:</span>
+                      <span className="value">
+                        {new Date(allergen.created_at).toLocaleDateString('it-IT')}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="allergen-actions">
@@ -437,13 +410,6 @@ export default function AllergensSection() {
                       title="Modifica allergene"
                     >
                       ✏️
-                    </button>
-                    <button 
-                      className="btn-small secondary"
-                      onClick={() => {/* Visualizza prodotti associati */}}
-                      title="Prodotti associati"
-                    >
-                      🔗
                     </button>
                     <button 
                       className="btn-small danger"
@@ -457,53 +423,46 @@ export default function AllergensSection() {
               ))}
             </div>
           ) : (
-            /* Vista Lista */
+            /* ✅ ALIGNED LIST VIEW */
             <div className="table-container">
               <table className="table">
                 <thead>
                   <tr>
                     <th>Allergene</th>
-                    <th>Tipo</th>
-                    <th>Codice</th>
-                    <th>Rischio</th>
-                    <th>Stato</th>
                     <th>Descrizione</th>
+                    <th>Stato</th>
+                    <th>Data Creazione</th>
                     <th>Azioni</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredAllergens.map(allergen => (
-                    <tr key={allergen.id} className={`allergen-row ${allergen.is_active ? 'active' : 'inactive'}`}>
+                    <tr key={allergen.id} className={`allergen-row ${allergen.active ? 'active' : 'inactive'}`}>
                       <td>
                         <div className="allergen-cell-info">
-                          <span className="allergen-icon">
-                            {getAllergenIcon(allergen.type)}
+                          <span 
+                            className="allergen-icon"
+                            style={{ backgroundColor: allergen.color }}
+                          >
+                            {allergen.icon}
                           </span>
                           <strong>{allergen.name}</strong>
                         </div>
                       </td>
                       <td>
-                        <span className="type-badge">
-                          {getAllergenTypeLabel(allergen.type)}
-                        </span>
-                      </td>
-                      <td>
-                        <code className="allergen-code">{allergen.code || '-'}</code>
-                      </td>
-                      <td>
-                        <span className={`risk-badge ${getRiskLevelColor(allergen.risk_level)}`}>
-                          {getRiskLevelIcon(allergen.risk_level)} {allergen.risk_level}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`status-badge ${allergen.is_active ? 'active' : 'inactive'}`}>
-                          {allergen.is_active ? '✅ Attivo' : '❌ Inattivo'}
-                        </span>
-                      </td>
-                      <td>
                         <div className="description-cell">
                           {allergen.description || <span className="text-muted">-</span>}
                         </div>
+                      </td>
+                      <td>
+                        <span className={`status-badge ${allergen.active ? 'active' : 'inactive'}`}>
+                          {allergen.active ? '✅ Attivo' : '❌ Inattivo'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="date-cell">
+                          {new Date(allergen.created_at).toLocaleDateString('it-IT')}
+                        </span>
                       </td>
                       <td>
                         <div className="action-buttons">
@@ -513,13 +472,6 @@ export default function AllergensSection() {
                             title="Modifica"
                           >
                             ✏️
-                          </button>
-                          <button 
-                            className="btn-small secondary"
-                            onClick={() => {/* Visualizza prodotti */}}
-                            title="Prodotti"
-                          >
-                            🔗
                           </button>
                           <button 
                             className="btn-small danger"
@@ -539,7 +491,7 @@ export default function AllergensSection() {
         </>
       )}
 
-      {/* Modal Aggiungi/Modifica Allergene */}
+      {/* ✅ ALIGNED MODALS */}
       {(showAddModal || editingAllergen) && (
         <AllergenModal
           allergen={editingAllergen}
@@ -558,11 +510,9 @@ export default function AllergensSection() {
               setEditingAllergen(null);
             }
           }}
-          existingCodes={allergens.filter(a => a.id !== editingAllergen?.id).map(a => a.code).filter(Boolean)}
         />
       )}
 
-      {/* Modal Conferma Eliminazione */}
       {showDeleteModal && (
         <DeleteConfirmModal
           allergen={showDeleteModal}
@@ -579,44 +529,17 @@ export default function AllergensSection() {
   );
 }
 
-// Modal per aggiungere/modificare allergene
-function AllergenModal({ allergen, onClose, onSave, existingCodes }) {
+// ✅ ALIGNED MODAL COMPONENT
+function AllergenModal({ allergen, onClose, onSave }) {
   const [formData, setFormData] = useState({
     name: allergen?.name || '',
-    type: allergen?.type || 'altro',
-    code: allergen?.code || '',
     description: allergen?.description || '',
-    regulations: allergen?.regulations || '',
-    risk_level: allergen?.risk_level || 'medio',
-    is_active: allergen?.is_active ?? true
+    icon: allergen?.icon || '⚠️',
+    color: allergen?.color || '#EF4444',
+    active: allergen?.active ?? true
   });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-
-  const allergenTypes = [
-    { value: 'cereali', label: '🌾 Cereali contenenti glutine' },
-    { value: 'crostacei', label: '🦐 Crostacei' },
-    { value: 'uova', label: '🥚 Uova' },
-    { value: 'pesce', label: '🐟 Pesce' },
-    { value: 'arachidi', label: '🥜 Arachidi' },
-    { value: 'soia', label: '🫘 Soia' },
-    { value: 'latte', label: '🥛 Latte e derivati' },
-    { value: 'frutta_guscio', label: '🌰 Frutta a guscio' },
-    { value: 'sedano', label: '🥬 Sedano' },
-    { value: 'senape', label: '🌿 Senape' },
-    { value: 'sesamo', label: '🌰 Semi di sesamo' },
-    { value: 'solfiti', label: '⚗️ Solfiti' },
-    { value: 'lupi', label: '🌾 Lupini' },
-    { value: 'molluschi', label: '🐚 Molluschi' },
-    { value: 'altro', label: '⚠️ Altro' }
-  ];
-
-  const riskLevels = [
-    { value: 'basso', label: '🟢 Basso' },
-    { value: 'medio', label: '🟡 Medio' },
-    { value: 'alto', label: '🟠 Alto' },
-    { value: 'critico', label: '🔴 Critico' }
-  ];
 
   const validateForm = () => {
     const newErrors = {};
@@ -625,10 +548,8 @@ function AllergenModal({ allergen, onClose, onSave, existingCodes }) {
       newErrors.name = 'Nome allergene è obbligatorio';
     } else if (formData.name.length < 2) {
       newErrors.name = 'Nome deve essere di almeno 2 caratteri';
-    }
-
-    if (formData.code && existingCodes.includes(formData.code)) {
-      newErrors.code = 'Codice già esistente';
+    } else if (formData.name.length > 100) {
+      newErrors.name = 'Nome non può superare i 100 caratteri';
     }
 
     if (formData.description && formData.description.length > 500) {
@@ -661,6 +582,8 @@ function AllergenModal({ allergen, onClose, onSave, existingCodes }) {
     }
   };
 
+  const commonIcons = ['⚠️', '🥜', '🥛', '🥚', '🌾', '🦐', '🐟', '🍯', '🌰', '🫘'];
+
   return (
     <div className="modal-overlay">
       <div className="modal-content allergen-modal">
@@ -672,68 +595,56 @@ function AllergenModal({ allergen, onClose, onSave, existingCodes }) {
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Nome Allergene *</label>
-              <input
-                type="text"
-                name="name"
-                className={`form-input ${errors.name ? 'error' : ''}`}
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="Es. Glutine, Lattosio..."
-                required
-              />
-              {errors.name && <span className="error-message">{errors.name}</span>}
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Codice</label>
-              <input
-                type="text"
-                name="code"
-                className={`form-input ${errors.code ? 'error' : ''}`}
-                value={formData.code}
-                onChange={handleChange}
-                placeholder="Es. GLU, LAT..."
-              />
-              {errors.code && <span className="error-message">{errors.code}</span>}
-            </div>
+          <div className="form-group">
+            <label className="form-label">Nome Allergene *</label>
+            <input
+              type="text"
+              name="name"
+              className={`form-input ${errors.name ? 'error' : ''}`}
+              value={formData.name}
+              onChange={handleChange}
+              placeholder="Es. Glutine, Lattosio, Arachidi..."
+              required
+            />
+            {errors.name && <span className="error-message">{errors.name}</span>}
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Tipo Allergene *</label>
-              <select
-                name="type"
-                className="form-select"
-                value={formData.type}
-                onChange={handleChange}
-                required
-              >
-                {allergenTypes.map(type => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
+              <label className="form-label">Icona</label>
+              <div className="icon-selector">
+                <input
+                  type="text"
+                  name="icon"
+                  className="form-input icon-input"
+                  value={formData.icon}
+                  onChange={handleChange}
+                  placeholder="⚠️"
+                />
+                <div className="icon-suggestions">
+                  {commonIcons.map(icon => (
+                    <button
+                      key={icon}
+                      type="button"
+                      className={`icon-btn ${formData.icon === icon ? 'selected' : ''}`}
+                      onClick={() => setFormData(prev => ({ ...prev, icon }))}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Livello di Rischio *</label>
-              <select
-                name="risk_level"
-                className="form-select"
-                value={formData.risk_level}
+              <label className="form-label">Colore</label>
+              <input
+                type="color"
+                name="color"
+                className="form-input color-input"
+                value={formData.color}
                 onChange={handleChange}
-                required
-              >
-                {riskLevels.map(level => (
-                  <option key={level.value} value={level.value}>
-                    {level.label}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           </div>
 
@@ -751,23 +662,11 @@ function AllergenModal({ allergen, onClose, onSave, existingCodes }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Normative</label>
-            <textarea
-              name="regulations"
-              className="form-textarea"
-              value={formData.regulations}
-              onChange={handleChange}
-              rows="2"
-              placeholder="Riferimenti normativi (es. Reg. UE 1169/2011)..."
-            />
-          </div>
-
-          <div className="form-group">
             <label className="form-checkbox">
               <input
                 type="checkbox"
-                name="is_active"
-                checked={formData.is_active}
+                name="active"
+                checked={formData.active}
                 onChange={handleChange}
               />
               <span>Allergene attivo</span>
@@ -797,7 +696,7 @@ function AllergenModal({ allergen, onClose, onSave, existingCodes }) {
   );
 }
 
-// Modal conferma eliminazione
+// ✅ ALIGNED DELETE MODAL
 function DeleteConfirmModal({ allergen, onClose, onConfirm }) {
   const [deleting, setDeleting] = useState(false);
 
@@ -822,9 +721,19 @@ function DeleteConfirmModal({ allergen, onClose, onConfirm }) {
             Questa azione è irreversibile. L'allergene verrà rimosso 
             da tutti i prodotti associati.
           </p>
-          <div className="allergen-info">
-            <span className="allergen-detail">Tipo: {allergen.type}</span>
-            <span className="allergen-detail">Codice: {allergen.code || 'N/A'}</span>
+          <div className="allergen-preview">
+            <span 
+              className="allergen-icon-preview"
+              style={{ backgroundColor: allergen.color }}
+            >
+              {allergen.icon}
+            </span>
+            <div className="allergen-details">
+              <div className="allergen-name">{allergen.name}</div>
+              {allergen.description && (
+                <div className="allergen-description">{allergen.description}</div>
+              )}
+            </div>
           </div>
         </div>
 
