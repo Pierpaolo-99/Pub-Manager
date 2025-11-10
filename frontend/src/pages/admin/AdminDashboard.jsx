@@ -5,7 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import OverviewSection from "./components/OverviewSection";
 import UsersSection from "./components/UsersSection";
 import ProductsSection from "./components/ProductsSection";
-import CategoriesSection from "./components/CategorySection"; // Nota: hai sia CategoriesSection che CategorySection
+import CategoriesSection from "./components/CategoriesSection"; // Nota: hai sia CategoriesSection che CategorySection
 import OrdersSection from "./components/OrdersSection";
 import StockSection from "./components/StockSection";
 import VariantsSection from "./components/VariantsSection";
