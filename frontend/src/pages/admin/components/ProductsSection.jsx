@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import "./ProductsSection.css";
 
 export default function ProductsSection() {
+  // ✅ ENHANCED: Safe state initialization with proper defaults
   const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [allergens, setAllergens] = useState([]);
+  const [categories, setCategories] = useState([]); // ✅ IMPORTANT: Initialize as empty array
+  const [allergens, setAllergens] = useState([]);   // ✅ IMPORTANT: Initialize as empty array
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -30,77 +31,210 @@ export default function ProductsSection() {
     filterProducts();
   }, [products, filters]);
 
+  // ✅ ENHANCED: Complete loadData with proper error handling
   const loadData = async () => {
     try {
       setError(null);
       setLoading(true);
       
-      const responses = await Promise.all([
-        fetch('http://localhost:3000/api/products', { credentials: 'include' }),
-        fetch('http://localhost:3000/api/categories', { credentials: 'include' }),
-        fetch('http://localhost:3000/api/allergens', { credentials: 'include' })
+      console.log('📦 Loading products, categories, and allergens...');
+      
+      // ✅ ENHANCED: Parallel loading con error handling individuale
+      const [productsRes, categoriesRes, allergensRes] = await Promise.allSettled([
+        fetch('/api/products', {
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }),
+        fetch('/api/categories', {
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }),
+        fetch('/api/allergens', {
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        })
       ]);
 
-      const [productsRes, categoriesRes, allergensRes] = responses;
+      // ✅ ENHANCED: Process products response
+      let processedProducts = [];
+      if (productsRes.status === 'fulfilled' && productsRes.value.ok) {
+        const productsData = await productsRes.value.json();
+        console.log('📦 Products response:', productsData);
+        
+        // ✅ ENHANCED: Handle different response structures
+        const productsArray = productsData.success 
+          ? productsData.products 
+          : Array.isArray(productsData) 
+            ? productsData 
+            : productsData.products || [];
+        
+        if (Array.isArray(productsArray)) {
+          // ✅ ENHANCED: Process allergens JSON properly
+          processedProducts = productsArray.map(product => ({
+            ...product,
+            allergens: product.allergens_json 
+              ? JSON.parse(`[${product.allergens_json}]`).filter(a => a.id !== null)
+              : []
+          }));
+        }
+        
+        setProducts(processedProducts);
+        console.log(`✅ Loaded ${processedProducts.length} products`);
+      } else {
+        console.error('❌ Products loading failed:', productsRes);
+        setProducts([]);
+      }
 
-      if (productsRes.ok) {
-        const productsData = await productsRes.json();
-        setProducts(productsData);
+      // ✅ ENHANCED: Process categories response with fallback
+      let processedCategories = [];
+      if (categoriesRes.status === 'fulfilled' && categoriesRes.value.ok) {
+        try {
+          const categoriesData = await categoriesRes.value.json();
+          console.log('🏷️ Categories response:', categoriesData);
+          
+          // ✅ ENHANCED: Handle different response structures
+          const categoriesArray = categoriesData.success 
+            ? categoriesData.categories 
+            : Array.isArray(categoriesData) 
+              ? categoriesData 
+              : categoriesData.categories || [];
+          
+          if (Array.isArray(categoriesArray)) {
+            processedCategories = categoriesArray;
+            setCategories(processedCategories);
+            console.log(`✅ Loaded ${processedCategories.length} categories`);
+          } else {
+            console.warn('⚠️ Categories data is not an array:', categoriesArray);
+            setCategories([]);
+          }
+        } catch (error) {
+          console.error('❌ Error parsing categories response:', error);
+          setCategories([]);
+        }
+      } else {
+        console.error('❌ Categories loading failed:', categoriesRes);
+        // ✅ ENHANCED: Set fallback categories
+        setCategories([
+          { id: 1, name: 'Birre', icon: '🍺', active: 1 },
+          { id: 2, name: 'Food', icon: '🍽️', active: 1 },
+          { id: 3, name: 'Cocktails', icon: '🍹', active: 1 }
+        ]);
+        console.log('⚠️ Using fallback categories');
       }
-      if (categoriesRes.ok) {
-        const categoriesData = await categoriesRes.json();
-        setCategories(categoriesData);
+
+      // ✅ ENHANCED: Process allergens response
+      let processedAllergens = [];
+      if (allergensRes.status === 'fulfilled' && allergensRes.value.ok) {
+        try {
+          const allergensData = await allergensRes.value.json();
+          console.log('🚨 Allergens response:', allergensData);
+          
+          const allergensArray = allergensData.success 
+            ? allergensData.allergens 
+            : Array.isArray(allergensData) 
+              ? allergensData 
+              : allergensData.allergens || [];
+          
+          if (Array.isArray(allergensArray)) {
+            processedAllergens = allergensArray;
+            setAllergens(processedAllergens);
+            console.log(`✅ Loaded ${processedAllergens.length} allergens`);
+          } else {
+            setAllergens([]);
+          }
+        } catch (error) {
+          console.error('❌ Error parsing allergens response:', error);
+          setAllergens([]);
+        }
+      } else {
+        console.error('❌ Allergens loading failed:', allergensRes);
+        setAllergens([]);
       }
-      if (allergensRes.ok) {
-        const allergensData = await allergensRes.json();
-        setAllergens(allergensData);
-      }
+
     } catch (error) {
-      console.error('Error loading data:', error);
-      setError('Errore nel caricamento dei dati');
+      console.error('❌ Critical error loading products:', error);
+      setError('Errore critico nel caricamento: ' + error.message);
+      
+      // ✅ ENHANCED: Set safe fallbacks on critical error
+      setProducts([]);
+      setCategories([]);
+      setAllergens([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ ENHANCED: Stats loading with proper error handling
   const loadStats = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/products/stats', {
-        credentials: 'include'
+      const response = await fetch('/api/products/stats', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (response.ok) {
         const statsData = await response.json();
-        setStats(statsData);
+        console.log('📊 Stats response:', statsData);
+        
+        const statsObject = statsData.success ? statsData.stats : statsData;
+        setStats(statsObject || {});
+        console.log('✅ Stats loaded');
+      } else {
+        console.warn('⚠️ Stats loading failed, using defaults');
+        setStats({});
       }
     } catch (error) {
-      console.error('Error loading stats:', error);
+      console.error('❌ Error loading stats:', error);
+      setStats({});
     }
   };
 
+  // ✅ ENHANCED: Safe filtering with array checks
   const filterProducts = () => {
+    if (!Array.isArray(products)) {
+      console.warn('⚠️ Products is not an array:', products);
+      setFilteredProducts([]);
+      return;
+    }
+
     let filtered = [...products];
 
+    // Search filter
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter(product =>
-        product.name?.toLowerCase().includes(searchLower) ||
-        product.description?.toLowerCase().includes(searchLower)
+        (product.name?.toLowerCase().includes(searchLower)) ||
+        (product.description?.toLowerCase().includes(searchLower))
       );
     }
 
+    // Category filter
     if (filters.category_id !== 'all') {
       filtered = filtered.filter(product => 
         product.category_id == filters.category_id
       );
     }
 
+    // Active filter
     if (filters.active !== 'all') {
       filtered = filtered.filter(product => 
         filters.active === 'true' ? product.active === 1 : product.active === 0
       );
     }
 
+    // Featured filter
     if (filters.featured !== 'all') {
       filtered = filtered.filter(product => 
         filters.featured === 'true' ? product.featured === 1 : product.featured === 0
@@ -110,6 +244,7 @@ export default function ProductsSection() {
     setFilteredProducts(filtered);
   };
 
+  // ✅ ENHANCED: Delete with relative URLs
   const handleDeleteProduct = async (id, productName, hasDependencies = false) => {
     const message = hasDependencies 
       ? `Eliminare "${productName}"?\n\nATTENZIONE: Questo prodotto ha varianti/ordini/stock. L'eliminazione sarà forzata.`
@@ -118,9 +253,12 @@ export default function ProductsSection() {
     if (!confirm(message)) return;
 
     try {
-      const response = await fetch(`http://localhost:3000/api/products/${id}`, {
+      const response = await fetch(`/api/products/${id}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         credentials: 'include',
         body: JSON.stringify({ force: hasDependencies })
       });
@@ -153,11 +291,15 @@ export default function ProductsSection() {
     }
   };
 
+  // ✅ ENHANCED: Toggle with relative URLs
   const handleToggleField = async (id, field, currentValue) => {
     try {
-      const response = await fetch(`http://localhost:3000/api/products/${id}`, {
+      const response = await fetch(`/api/products/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         credentials: 'include',
         body: JSON.stringify({ 
           field, 
@@ -170,6 +312,7 @@ export default function ProductsSection() {
         throw new Error(errorData.error || `Errore nell'aggiornamento ${field}`);
       }
 
+      // ✅ ENHANCED: Update products state optimistically
       setProducts(products.map(product => 
         product.id === id ? { ...product, [field]: !currentValue ? 1 : 0 } : product
       ));
@@ -188,12 +331,17 @@ export default function ProductsSection() {
     }).format(amount);
   };
 
+  // ✅ ENHANCED: Loading state
   if (loading) {
     return (
       <div className="products-section">
-        <div className="loading-spinner">
-          <div className="spinner"></div>
-          <p>Caricamento prodotti...</p>
+        <div className="loading-state">
+          <div className="loading-spinner">
+            <div className="spinner"></div>
+          </div>
+          <h3>🔄 Caricamento Prodotti</h3>
+          <p>Elaborazione catalogo in corso...</p>
+          <small>Connessione backend prodotti</small>
         </div>
       </div>
     );
@@ -304,11 +452,18 @@ export default function ProductsSection() {
           onChange={(e) => setFilters(prev => ({ ...prev, category_id: e.target.value }))}
         >
           <option value="all">Tutte le categorie</option>
-          {categories.map(category => (
-            <option key={category.id} value={category.id}>
-              {category.icon} {category.name}
+          {/* ✅ SAFE CATEGORIES RENDERING */}
+          {Array.isArray(categories) && categories.length > 0 ? (
+            categories.map(category => (
+              <option key={category.id} value={category.id}>
+                {category.icon} {category.name}
+              </option>
+            ))
+          ) : (
+            <option value="" disabled>
+              ⚠️ Nessuna categoria disponibile
             </option>
-          ))}
+          )}
         </select>
 
         <select 
@@ -415,14 +570,16 @@ export default function ProductsSection() {
   );
 }
 
-// Componente Vista Griglia
+// ✅ ENHANCED: ProductsGrid with safe category handling
 function ProductsGrid({ products, categories, onEdit, onDelete, onToggleField }) {
   const getCategoryName = (categoryId) => {
+    if (!Array.isArray(categories)) return 'Senza categoria';
     const category = categories.find(cat => cat.id === categoryId);
     return category ? category.name : 'Senza categoria';
   };
 
   const getCategoryIcon = (categoryId) => {
+    if (!Array.isArray(categories)) return '🍽️';
     const category = categories.find(cat => cat.id === categoryId);
     return category?.icon || '🍽️';
   };
@@ -444,14 +601,16 @@ function ProductsGrid({ products, categories, onEdit, onDelete, onToggleField })
   );
 }
 
-// Componente Vista Tabella
+// ✅ ENHANCED: ProductsTable with safe category handling
 function ProductsTable({ products, categories, onEdit, onDelete, onToggleField }) {
   const getCategoryName = (categoryId) => {
+    if (!Array.isArray(categories)) return 'Senza categoria';
     const category = categories.find(cat => cat.id === categoryId);
     return category ? category.name : 'Senza categoria';
   };
 
   const getCategoryIcon = (categoryId) => {
+    if (!Array.isArray(categories)) return '🍽️';
     const category = categories.find(cat => cat.id === categoryId);
     return category?.icon || '🍽️';
   };
@@ -580,7 +739,7 @@ function ProductsTable({ products, categories, onEdit, onDelete, onToggleField }
   );
 }
 
-// Componente Card Prodotto
+// Componente Card Prodotto (unchanged - already safe)
 function ProductCard({ product, categoryName, categoryIcon, onEdit, onDelete, onToggleField }) {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('it-IT', {
@@ -687,13 +846,17 @@ function ProductCard({ product, categoryName, categoryIcon, onEdit, onDelete, on
   );
 }
 
-// Modal per aggiungere/modificare prodotto
-function ProductModal({ product, categories, allergens, onClose, onSave }) {
+// ✅ ENHANCED: ProductModal with safe rendering
+function ProductModal({ product, categories = [], allergens = [], onClose, onSave }) {
+  // ✅ ENHANCED: Safe categories and allergens with defaults
+  const safeCategories = Array.isArray(categories) ? categories : [];
+  const safeAllergens = Array.isArray(allergens) ? allergens : [];
+  
   const [formData, setFormData] = useState({
     name: product?.name || '',
     description: product?.description || '',
     base_price: product?.base_price || '',
-    category_id: product?.category_id || '',
+    category_id: product?.category_id || (safeCategories[0]?.id || ''),
     active: product?.active !== undefined ? Boolean(product.active) : true,
     featured: product?.featured !== undefined ? Boolean(product.featured) : false,
     image_url: product?.image_url || '',
@@ -706,6 +869,7 @@ function ProductModal({ product, categories, allergens, onClose, onSave }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // ✅ ENHANCED: Form submission with relative URLs
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -724,14 +888,17 @@ function ProductModal({ product, categories, allergens, onClose, onSave }) {
 
     try {
       const url = product 
-        ? `http://localhost:3000/api/products/${product.id}`
-        : 'http://localhost:3000/api/products';
+        ? `/api/products/${product.id}`
+        : '/api/products';
       
       const method = product ? 'PUT' : 'POST';
 
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         credentials: 'include',
         body: JSON.stringify({
           ...formData,
@@ -825,12 +992,24 @@ function ProductModal({ product, categories, allergens, onClose, onSave }) {
                     required
                   >
                     <option value="">Seleziona categoria</option>
-                    {categories.map(category => (
-                      <option key={category.id} value={category.id}>
-                        {category.icon} {category.name}
+                    {/* ✅ SAFE CATEGORIES RENDERING */}
+                    {safeCategories.length > 0 ? (
+                      safeCategories.map(category => (
+                        <option key={category.id} value={category.id}>
+                          {category.icon} {category.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>
+                        ⚠️ Nessuna categoria disponibile
                       </option>
-                    ))}
+                    )}
                   </select>
+                  {safeCategories.length === 0 && (
+                    <small className="form-hint warning">
+                      ⚠️ Creare prima delle categorie per associare i prodotti
+                    </small>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -905,18 +1084,26 @@ function ProductModal({ product, categories, allergens, onClose, onSave }) {
               <div className="form-group">
                 <label className="form-label">Allergeni</label>
                 <div className="allergens-grid">
-                  {allergens.map(allergen => (
-                    <label key={allergen.id} className="allergen-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={formData.allergen_ids.includes(allergen.id)}
-                        onChange={() => handleAllergenChange(allergen.id)}
-                      />
-                      <span className="allergen-label">
-                        {allergen.name} {allergen.code && `(${allergen.code})`}
-                      </span>
-                    </label>
-                  ))}
+                  {/* ✅ SAFE ALLERGENS RENDERING */}
+                  {safeAllergens.length > 0 ? (
+                    safeAllergens.map(allergen => (
+                      <label key={allergen.id} className="allergen-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={formData.allergen_ids.includes(allergen.id)}
+                          onChange={() => handleAllergenChange(allergen.id)}
+                        />
+                        <span className="allergen-label">
+                          {allergen.name} {allergen.code && `(${allergen.code})`}
+                        </span>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="empty-allergens">
+                      <p>🚨 Nessun allergene configurato</p>
+                      <small>Gli allergeni possono essere gestiti dalle impostazioni</small>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -952,8 +1139,21 @@ function ProductModal({ product, categories, allergens, onClose, onSave }) {
             <button type="button" className="btn secondary" onClick={onClose}>
               Annulla
             </button>
-            <button type="submit" className="btn primary" disabled={loading}>
-              {loading ? 'Salvando...' : (product ? 'Aggiorna Prodotto' : 'Crea Prodotto')}
+            <button 
+              type="submit" 
+              className="btn primary" 
+              disabled={loading || !formData.name.trim() || !formData.base_price || !formData.category_id}
+            >
+              {loading ? (
+                <>
+                  <div className="btn-spinner"></div>
+                  {product ? 'Salvando...' : 'Creando...'}
+                </>
+              ) : (
+                <>
+                  {product ? '💾 Salva Modifiche' : '➕ Crea Prodotto'}
+                </>
+              )}
             </button>
           </div>
         </form>

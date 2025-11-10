@@ -250,21 +250,22 @@
   padding: 1rem 2rem;
   background: #fef2f2;
   border: 1px solid #fecaca;
-  border-radius: 0;
-  color: #dc2626;
+  border-radius: 12px;
+  color: #7f1d1d;
   font-weight: 500;
 }
 
 .products-section .error-icon {
   color: #dc2626;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
+  flex-shrink: 0;
 }
 
 .products-section .error-close {
   margin-left: auto;
   background: none;
   border: none;
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   cursor: pointer;
   color: #dc2626;
   padding: 0.25rem;
@@ -273,7 +274,7 @@
 }
 
 .products-section .error-close:hover {
-  background: rgba(220, 38, 38, 0.1);
+  color: #991b1b;
 }
 
 /* ===== EMPTY STATE ===== */
@@ -335,6 +336,32 @@
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* ===== LOADING STATE IMPROVEMENTS ===== */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  text-align: center;
+  color: #64748b;
+}
+
+.loading-state h3 {
+  margin: 1rem 0 0.5rem 0;
+  color: #374151;
+}
+
+.loading-state p {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.loading-state small {
+  color: #9ca3af;
+  font-style: italic;
 }
 
 /* ===== PRODUCTS GRID ===== */
