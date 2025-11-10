@@ -12,30 +12,23 @@ export default function PromotionsSection() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [editingPromotion, setEditingPromotion] = useState(null);
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' o 'table'
+  const [viewMode, setViewMode] = useState('grid');
 
-  // Stati per il form
+  // ✅ FIXED: Form data allineato al backend
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    type: 'percentage', // percentage, fixed_amount, happy_hour, buy_x_get_y
-    discount_value: '',
-    min_quantity: 1,
-    max_uses: null,
-    valid_from: '',
-    valid_until: '',
-    is_active: true,
-    applies_to: 'all', // all, category, product
-    target_category_id: null,
-    target_product_id: null,
-    days_of_week: [], // ['monday', 'tuesday', etc.]
-    time_from: '',
-    time_until: '',
-    conditions: {
-      min_amount: '',
-      max_discount: '',
-      combinable: false
-    }
+    type: 'percentage',
+    value: '',                    // ✅ Corretto dal backend
+    min_amount: '',              // ✅ Corretto dal backend
+    max_discount: '',            // ✅ Corretto dal backend
+    start_date: '',              // ✅ Corretto dal backend
+    end_date: '',                // ✅ Corretto dal backend
+    start_time: '',              // ✅ Corretto dal backend
+    end_time: '',                // ✅ Corretto dal backend
+    days_of_week: [],            // ✅ Corretto dal backend
+    max_uses: '',                // ✅ Corretto dal backend
+    active: true                 // ✅ Corretto dal backend
   });
 
   useEffect(() => {
@@ -44,31 +37,36 @@ export default function PromotionsSection() {
 
   const loadData = async () => {
     try {
+      setLoading(true);
       setError(null);
       
       const [promotionsRes, productsRes, categoriesRes] = await Promise.all([
         fetch('http://localhost:3000/api/promotions', { credentials: 'include' }),
         fetch('http://localhost:3000/api/products', { credentials: 'include' }),
-        fetch('http://localhost:3000/api/categories', { credentials: 'include' })
+        fetch('http://localhost:3000/api/categories/active', { credentials: 'include' })
       ]);
 
+      // ✅ FIXED: Gestione response corretta
       if (promotionsRes.ok) {
         const promotionsData = await promotionsRes.json();
-        setPromotions(promotionsData);
+        console.log('✅ Promotions loaded:', promotionsData);
+        setPromotions(promotionsData.promotions || promotionsData || []);
       }
       
       if (productsRes.ok) {
         const productsData = await productsRes.json();
-        setProducts(productsData);
+        console.log('✅ Products loaded:', productsData);
+        setProducts(productsData.products || productsData || []);
       }
       
       if (categoriesRes.ok) {
         const categoriesData = await categoriesRes.json();
-        setCategories(categoriesData);
+        console.log('✅ Categories loaded:', categoriesData);
+        setCategories(categoriesData.categories || categoriesData || []);
       }
     } catch (error) {
-      console.error('Error loading data:', error);
-      setError('Errore nel caricamento dei dati');
+      console.error('❌ Error loading data:', error);
+      setError('Errore nel caricamento dei dati: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -78,6 +76,33 @@ export default function PromotionsSection() {
     e.preventDefault();
     
     try {
+      setError(null);
+      
+      // ✅ FIXED: Validazione frontend
+      if (!formData.name || !formData.value) {
+        setError('Nome e valore sono obbligatori');
+        return;
+      }
+
+      // ✅ FIXED: Preparazione dati allineati al backend
+      const submitData = {
+        name: formData.name.trim(),
+        description: formData.description?.trim() || null,
+        type: formData.type,
+        value: parseFloat(formData.value),
+        min_amount: parseFloat(formData.min_amount) || 0,
+        max_discount: parseFloat(formData.max_discount) || null,
+        start_date: formData.start_date || null,
+        end_date: formData.end_date || null,
+        start_time: formData.start_time || null,
+        end_time: formData.end_time || null,
+        days_of_week: formData.days_of_week.length > 0 ? formData.days_of_week : null,
+        max_uses: parseInt(formData.max_uses) || null,
+        active: formData.active
+      };
+
+      console.log('📤 Submitting promotion data:', submitData);
+      
       const url = editingPromotion 
         ? `http://localhost:3000/api/promotions/${editingPromotion.id}`
         : 'http://localhost:3000/api/promotions';
@@ -90,81 +115,103 @@ export default function PromotionsSection() {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({
-          ...formData,
-          conditions: JSON.stringify(formData.conditions),
-          days_of_week: JSON.stringify(formData.days_of_week)
-        }),
+        body: JSON.stringify(submitData),
       });
 
-      if (response.ok) {
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        console.log('✅ Promotion saved successfully');
         await loadData();
         setShowModal(false);
         resetForm();
       } else {
-        setError('Errore nel salvataggio della promozione');
+        throw new Error(result.error || 'Errore nel salvataggio della promozione');
       }
     } catch (error) {
-      console.error('Error saving promotion:', error);
-      setError('Errore nel salvataggio della promozione');
+      console.error('❌ Error saving promotion:', error);
+      setError(error.message);
     }
   };
 
   const handleEdit = (promotion) => {
+    console.log('✏️ Editing promotion:', promotion);
+    
     setEditingPromotion(promotion);
+    
+    // ✅ FIXED: Mappatura corretta dal backend al form
     setFormData({
-      ...promotion,
-      conditions: typeof promotion.conditions === 'string' 
-        ? JSON.parse(promotion.conditions || '{}')
-        : promotion.conditions || {},
-      days_of_week: typeof promotion.days_of_week === 'string'
-        ? JSON.parse(promotion.days_of_week || '[]')
-        : promotion.days_of_week || [],
-      valid_from: promotion.valid_from ? new Date(promotion.valid_from).toISOString().split('T')[0] : '',
-      valid_until: promotion.valid_until ? new Date(promotion.valid_until).toISOString().split('T')[0] : ''
+      name: promotion.name || '',
+      description: promotion.description || '',
+      type: promotion.type || 'percentage',
+      value: promotion.value || '',
+      min_amount: promotion.min_amount || '',
+      max_discount: promotion.max_discount || '',
+      start_date: promotion.start_date ? new Date(promotion.start_date).toISOString().split('T')[0] : '',
+      end_date: promotion.end_date ? new Date(promotion.end_date).toISOString().split('T')[0] : '',
+      start_time: promotion.start_time || '',
+      end_time: promotion.end_time || '',
+      days_of_week: promotion.days_of_week ? (
+        typeof promotion.days_of_week === 'string' 
+          ? JSON.parse(promotion.days_of_week) 
+          : promotion.days_of_week
+      ) : [],
+      max_uses: promotion.max_uses || '',
+      active: promotion.active !== undefined ? promotion.active : true
     });
+    
     setShowModal(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Sei sicuro di voler eliminare questa promozione?')) return;
+  const handleDelete = async (id, promotionName) => {
+    if (!confirm(`Sei sicuro di voler eliminare la promozione "${promotionName}"?`)) return;
     
     try {
+      setError(null);
+      
       const response = await fetch(`http://localhost:3000/api/promotions/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
 
-      if (response.ok) {
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        console.log('✅ Promotion deleted successfully');
         await loadData();
       } else {
-        setError('Errore nell\'eliminazione della promozione');
+        throw new Error(result.error || 'Errore nell\'eliminazione della promozione');
       }
     } catch (error) {
-      console.error('Error deleting promotion:', error);
-      setError('Errore nell\'eliminazione della promozione');
+      console.error('❌ Error deleting promotion:', error);
+      setError(error.message);
     }
   };
 
-  const handleToggleActive = async (id, currentStatus) => {
+  const handleToggleActive = async (id, currentStatus, promotionName) => {
     try {
+      setError(null);
+      
       const response = await fetch(`http://localhost:3000/api/promotions/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ is_active: !currentStatus }),
+        body: JSON.stringify({ active: currentStatus ? 0 : 1 }), // ✅ FIXED: 0/1 per boolean
       });
 
-      if (response.ok) {
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        console.log(`✅ Promotion ${currentStatus ? 'deactivated' : 'activated'}: ${promotionName}`);
         await loadData();
       } else {
-        setError('Errore nell\'aggiornamento dello stato');
+        throw new Error(result.error || 'Errore nell\'aggiornamento dello stato');
       }
     } catch (error) {
-      console.error('Error toggling promotion status:', error);
-      setError('Errore nell\'aggiornamento dello stato');
+      console.error('❌ Error toggling promotion status:', error);
+      setError(error.message);
     }
   };
 
@@ -173,23 +220,16 @@ export default function PromotionsSection() {
       name: '',
       description: '',
       type: 'percentage',
-      discount_value: '',
-      min_quantity: 1,
-      max_uses: null,
-      valid_from: '',
-      valid_until: '',
-      is_active: true,
-      applies_to: 'all',
-      target_category_id: null,
-      target_product_id: null,
+      value: '',
+      min_amount: '',
+      max_discount: '',
+      start_date: '',
+      end_date: '',
+      start_time: '',
+      end_time: '',
       days_of_week: [],
-      time_from: '',
-      time_until: '',
-      conditions: {
-        min_amount: '',
-        max_discount: '',
-        combinable: false
-      }
+      max_uses: '',
+      active: true
     });
     setEditingPromotion(null);
   };
@@ -197,21 +237,10 @@ export default function PromotionsSection() {
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     
-    if (name.startsWith('conditions.')) {
-      const conditionKey = name.split('.')[1];
-      setFormData(prev => ({
-        ...prev,
-        conditions: {
-          ...prev.conditions,
-          [conditionKey]: type === 'checkbox' ? checked : value
-        }
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: type === 'checkbox' ? checked : value
-      }));
-    }
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
 
   const handleDayToggle = (day) => {
@@ -223,26 +252,26 @@ export default function PromotionsSection() {
     }));
   };
 
-  // Filtri
+  // ✅ FIXED: Filtri corretti con dati backend
   const filteredPromotions = promotions.filter(promotion => {
-    const matchesSearch = promotion.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         promotion.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (promotion.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                         (promotion.description?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || 
-                         (statusFilter === 'active' && promotion.is_active) ||
-                         (statusFilter === 'inactive' && !promotion.is_active);
+                         (statusFilter === 'active' && promotion.active) ||
+                         (statusFilter === 'inactive' && !promotion.active);
     
     const matchesType = typeFilter === 'all' || promotion.type === typeFilter;
     
     return matchesSearch && matchesStatus && matchesType;
   });
 
-  // Statistiche
+  // ✅ FIXED: Statistiche corrette
   const stats = {
     total: promotions.length,
-    active: promotions.filter(p => p.is_active).length,
-    expired: promotions.filter(p => p.valid_until && new Date(p.valid_until) < new Date()).length,
-    upcoming: promotions.filter(p => p.valid_from && new Date(p.valid_from) > new Date()).length
+    active: promotions.filter(p => p.active).length,
+    expired: promotions.filter(p => p.end_date && new Date(p.end_date) < new Date()).length,
+    upcoming: promotions.filter(p => p.start_date && new Date(p.start_date) > new Date()).length
   };
 
   if (loading) {
@@ -251,22 +280,7 @@ export default function PromotionsSection() {
         <div className="loading-spinner">
           <div className="spinner"></div>
           <h3>Caricamento Promozioni</h3>
-          <p>Raccolta dati in corso...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="promotions-section">
-        <div className="error-state">
-          <span className="error-icon">⚠️</span>
-          <h3>Errore nel caricamento</h3>
-          <p>{error}</p>
-          <button className="btn primary" onClick={loadData}>
-            🔄 Riprova
-          </button>
+          <p>Connessione al backend...</p>
         </div>
       </div>
     );
@@ -274,12 +288,21 @@ export default function PromotionsSection() {
 
   return (
     <div className="promotions-section">
+      {/* Error banner */}
+      {error && (
+        <div className="error-banner">
+          <span className="error-icon">⚠️</span>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="error-close">×</button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="section-header">
         <div className="header-content">
           <h2>🏷️ Gestione Promozioni</h2>
           <p className="section-subtitle">
-            Crea e gestisci sconti, happy hour e offerte speciali
+            {stats.total} promozioni • {stats.active} attive • {stats.expired} scadute
           </p>
         </div>
         <div className="header-actions">
@@ -374,7 +397,6 @@ export default function PromotionsSection() {
           <option value="all">Tutti i tipi</option>
           <option value="percentage">Percentuale</option>
           <option value="fixed_amount">Importo fisso</option>
-          <option value="happy_hour">Happy Hour</option>
           <option value="buy_x_get_y">Compra X prendi Y</option>
         </select>
 
@@ -453,25 +475,12 @@ export default function PromotionsSection() {
   );
 }
 
-// Componente Vista Griglia
+// ✅ FIXED: Componente Grid aggiornato
 function PromotionsGrid({ promotions, categories, products, onEdit, onDelete, onToggleActive }) {
-  const getTargetName = (promotion) => {
-    if (promotion.applies_to === 'category' && promotion.target_category_id) {
-      const category = categories.find(c => c.id === promotion.target_category_id);
-      return category ? `Categoria: ${category.name}` : 'Categoria sconosciuta';
-    }
-    if (promotion.applies_to === 'product' && promotion.target_product_id) {
-      const product = products.find(p => p.id === promotion.target_product_id);
-      return product ? `Prodotto: ${product.name}` : 'Prodotto sconosciuto';
-    }
-    return 'Tutti i prodotti';
-  };
-
   const getTypeLabel = (type) => {
     const types = {
       'percentage': 'Percentuale',
       'fixed_amount': 'Importo fisso',
-      'happy_hour': 'Happy Hour',
       'buy_x_get_y': 'Compra X prendi Y'
     };
     return types[type] || type;
@@ -480,15 +489,13 @@ function PromotionsGrid({ promotions, categories, products, onEdit, onDelete, on
   const getDiscountText = (promotion) => {
     switch (promotion.type) {
       case 'percentage':
-        return `${promotion.discount_value}%`;
+        return `${promotion.value}%`;
       case 'fixed_amount':
-        return `€${promotion.discount_value}`;
-      case 'happy_hour':
-        return `${promotion.discount_value}%`;
+        return `€${promotion.value}`;
       case 'buy_x_get_y':
-        return `Compra ${promotion.min_quantity} prendi 1`;
+        return `Compra ${promotion.min_amount || 1} prendi 1`;
       default:
-        return promotion.discount_value;
+        return promotion.value;
     }
   };
 
@@ -505,7 +512,7 @@ function PromotionsGrid({ promotions, categories, products, onEdit, onDelete, on
       {promotions.map(promotion => (
         <div 
           key={promotion.id} 
-          className={`promotion-card ${!promotion.is_active ? 'inactive' : ''} ${isExpired(promotion.valid_until) ? 'expired' : ''}`}
+          className={`promotion-card ${!promotion.active ? 'inactive' : ''} ${isExpired(promotion.end_date) ? 'expired' : ''}`}
         >
           <div className="promotion-header">
             <div className="promotion-type">
@@ -514,11 +521,11 @@ function PromotionsGrid({ promotions, categories, products, onEdit, onDelete, on
               </span>
               <div className="promotion-status">
                 <button 
-                  className={`status-toggle ${promotion.is_active ? 'active' : 'inactive'}`}
-                  onClick={() => onToggleActive(promotion.id, promotion.is_active)}
-                  title={promotion.is_active ? 'Disattiva' : 'Attiva'}
+                  className={`status-toggle ${promotion.active ? 'active' : 'inactive'}`}
+                  onClick={() => onToggleActive(promotion.id, promotion.active, promotion.name)}
+                  title={promotion.active ? 'Disattiva' : 'Attiva'}
                 >
-                  {promotion.is_active ? '🟢' : '🔴'}
+                  {promotion.active ? '🟢' : '🔴'}
                 </button>
               </div>
             </div>
@@ -530,28 +537,32 @@ function PromotionsGrid({ promotions, categories, products, onEdit, onDelete, on
 
           <div className="promotion-content">
             <h3 className="promotion-name">{promotion.name}</h3>
-            <p className="promotion-description">{promotion.description}</p>
+            {promotion.description && (
+              <p className="promotion-description">{promotion.description}</p>
+            )}
             
             <div className="promotion-details">
-              <div className="detail-item">
-                <span className="detail-label">Applica a:</span>
-                <span className="detail-value">{getTargetName(promotion)}</span>
-              </div>
+              {promotion.min_amount > 0 && (
+                <div className="detail-item">
+                  <span className="detail-label">Ordine minimo:</span>
+                  <span className="detail-value">€{promotion.min_amount}</span>
+                </div>
+              )}
               
-              {promotion.valid_from && (
+              {promotion.start_date && (
                 <div className="detail-item">
                   <span className="detail-label">Da:</span>
                   <span className="detail-value">
-                    {new Date(promotion.valid_from).toLocaleDateString('it-IT')}
+                    {new Date(promotion.start_date).toLocaleDateString('it-IT')}
                   </span>
                 </div>
               )}
               
-              {promotion.valid_until && (
+              {promotion.end_date && (
                 <div className="detail-item">
                   <span className="detail-label">Fino:</span>
-                  <span className={`detail-value ${isExpired(promotion.valid_until) ? 'expired' : ''}`}>
-                    {new Date(promotion.valid_until).toLocaleDateString('it-IT')}
+                  <span className={`detail-value ${isExpired(promotion.end_date) ? 'expired' : ''}`}>
+                    {new Date(promotion.end_date).toLocaleDateString('it-IT')}
                   </span>
                 </div>
               )}
@@ -559,27 +570,32 @@ function PromotionsGrid({ promotions, categories, products, onEdit, onDelete, on
               {promotion.max_uses && (
                 <div className="detail-item">
                   <span className="detail-label">Usi max:</span>
-                  <span className="detail-value">{promotion.max_uses}</span>
+                  <span className="detail-value">{promotion.max_uses} ({promotion.current_uses || 0} usati)</span>
                 </div>
               )}
             </div>
 
-            {promotion.days_of_week && promotion.days_of_week.length > 0 && (
+            {promotion.days_of_week && (
               <div className="promotion-schedule">
                 <span className="schedule-label">Giorni:</span>
                 <div className="days-list">
-                  {JSON.parse(promotion.days_of_week).map(day => (
-                    <span key={day} className="day-tag">{day.slice(0, 3)}</span>
+                  {(typeof promotion.days_of_week === 'string' 
+                    ? JSON.parse(promotion.days_of_week) 
+                    : promotion.days_of_week
+                  ).map(day => (
+                    <span key={day} className="day-tag">
+                      {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                    </span>
                   ))}
                 </div>
               </div>
             )}
 
-            {(promotion.time_from || promotion.time_until) && (
+            {(promotion.start_time || promotion.end_time) && (
               <div className="promotion-time">
                 <span className="time-label">Orario:</span>
                 <span className="time-value">
-                  {promotion.time_from} - {promotion.time_until}
+                  {promotion.start_time || '00:00'} - {promotion.end_time || '23:59'}
                 </span>
               </div>
             )}
@@ -594,19 +610,19 @@ function PromotionsGrid({ promotions, categories, products, onEdit, onDelete, on
             </button>
             <button 
               className="btn-small danger"
-              onClick={() => onDelete(promotion.id)}
+              onClick={() => onDelete(promotion.id, promotion.name)}
             >
               🗑️ Elimina
             </button>
           </div>
 
-          {isExpired(promotion.valid_until) && (
+          {isExpired(promotion.end_date) && (
             <div className="expiry-banner">
               ⏰ Scaduta
             </div>
           )}
 
-          {isUpcoming(promotion.valid_from) && (
+          {isUpcoming(promotion.start_date) && (
             <div className="upcoming-banner">
               🕒 Programmata
             </div>
@@ -617,25 +633,12 @@ function PromotionsGrid({ promotions, categories, products, onEdit, onDelete, on
   );
 }
 
-// Componente Vista Tabella
+// ✅ FIXED: Componente Table aggiornato
 function PromotionsTable({ promotions, categories, products, onEdit, onDelete, onToggleActive }) {
-  const getTargetName = (promotion) => {
-    if (promotion.applies_to === 'category' && promotion.target_category_id) {
-      const category = categories.find(c => c.id === promotion.target_category_id);
-      return category ? `${category.name}` : 'Categoria sconosciuta';
-    }
-    if (promotion.applies_to === 'product' && promotion.target_product_id) {
-      const product = products.find(p => p.id === promotion.target_product_id);
-      return product ? `${product.name}` : 'Prodotto sconosciuto';
-    }
-    return 'Tutti';
-  };
-
   const getTypeLabel = (type) => {
     const types = {
       'percentage': 'Percentuale',
       'fixed_amount': 'Importo fisso',
-      'happy_hour': 'Happy Hour',
       'buy_x_get_y': 'Compra X prendi Y'
     };
     return types[type] || type;
@@ -648,9 +651,9 @@ function PromotionsTable({ promotions, categories, products, onEdit, onDelete, o
           <tr>
             <th>Nome</th>
             <th>Tipo</th>
-            <th>Sconto</th>
-            <th>Applica a</th>
+            <th>Valore</th>
             <th>Validità</th>
+            <th>Utilizzi</th>
             <th>Stato</th>
             <th>Azioni</th>
           </tr>
@@ -661,7 +664,9 @@ function PromotionsTable({ promotions, categories, products, onEdit, onDelete, o
               <td>
                 <div className="promotion-info">
                   <div className="promotion-name">{promotion.name}</div>
-                  <div className="promotion-description">{promotion.description}</div>
+                  {promotion.description && (
+                    <div className="promotion-description">{promotion.description}</div>
+                  )}
                 </div>
               </td>
               <td>
@@ -670,30 +675,35 @@ function PromotionsTable({ promotions, categories, products, onEdit, onDelete, o
                 </span>
               </td>
               <td className="promotion-discount">
-                {promotion.type === 'percentage' && `${promotion.discount_value}%`}
-                {promotion.type === 'fixed_amount' && `€${promotion.discount_value}`}
-                {promotion.type === 'happy_hour' && `${promotion.discount_value}%`}
-                {promotion.type === 'buy_x_get_y' && `${promotion.min_quantity}+1`}
+                {promotion.type === 'percentage' && `${promotion.value}%`}
+                {promotion.type === 'fixed_amount' && `€${promotion.value}`}
+                {promotion.type === 'buy_x_get_y' && `Min: ${promotion.min_amount || 1}`}
               </td>
-              <td>{getTargetName(promotion)}</td>
               <td>
                 <div className="validity-period">
-                  {promotion.valid_from && (
-                    <div>Da: {new Date(promotion.valid_from).toLocaleDateString('it-IT')}</div>
+                  {promotion.start_date && (
+                    <div>Da: {new Date(promotion.start_date).toLocaleDateString('it-IT')}</div>
                   )}
-                  {promotion.valid_until && (
-                    <div>A: {new Date(promotion.valid_until).toLocaleDateString('it-IT')}</div>
+                  {promotion.end_date && (
+                    <div>A: {new Date(promotion.end_date).toLocaleDateString('it-IT')}</div>
                   )}
-                  {!promotion.valid_from && !promotion.valid_until && 'Sempre valida'}
+                  {!promotion.start_date && !promotion.end_date && 'Sempre valida'}
+                </div>
+              </td>
+              <td>
+                <div className="usage-info">
+                  <span>{promotion.current_uses || 0}</span>
+                  {promotion.max_uses && <span> / {promotion.max_uses}</span>}
+                  {!promotion.max_uses && <span> / ∞</span>}
                 </div>
               </td>
               <td>
                 <button 
-                  className={`status-toggle ${promotion.is_active ? 'active' : 'inactive'}`}
-                  onClick={() => onToggleActive(promotion.id, promotion.is_active)}
+                  className={`status-toggle ${promotion.active ? 'active' : 'inactive'}`}
+                  onClick={() => onToggleActive(promotion.id, promotion.active, promotion.name)}
                 >
                   <span className="status-dot"></span>
-                  {promotion.is_active ? 'Attiva' : 'Inattiva'}
+                  {promotion.active ? 'Attiva' : 'Inattiva'}
                 </button>
               </td>
               <td>
@@ -706,7 +716,7 @@ function PromotionsTable({ promotions, categories, products, onEdit, onDelete, o
                   </button>
                   <button 
                     className="btn-small danger"
-                    onClick={() => onDelete(promotion.id)}
+                    onClick={() => onDelete(promotion.id, promotion.name)}
                   >
                     🗑️
                   </button>
@@ -720,7 +730,7 @@ function PromotionsTable({ promotions, categories, products, onEdit, onDelete, o
   );
 }
 
-// Componente Modal
+// ✅ FIXED: Modal aggiornato con campi backend
 function PromotionModal({ formData, editingPromotion, categories, products, onInputChange, onDayToggle, onSubmit, onClose }) {
   const daysOfWeek = [
     { key: 'monday', label: 'Lunedì' },
@@ -753,7 +763,7 @@ function PromotionModal({ formData, editingPromotion, categories, products, onIn
                 value={formData.name}
                 onChange={onInputChange}
                 className="form-input"
-                placeholder="Es: Happy Hour del Venerdì"
+                placeholder="Es: Sconto del 20%"
                 required
               />
             </div>
@@ -769,7 +779,6 @@ function PromotionModal({ formData, editingPromotion, categories, products, onIn
               >
                 <option value="percentage">Sconto Percentuale</option>
                 <option value="fixed_amount">Sconto Fisso</option>
-                <option value="happy_hour">Happy Hour</option>
                 <option value="buy_x_get_y">Compra X prendi Y</option>
               </select>
             </div>
@@ -790,90 +799,65 @@ function PromotionModal({ formData, editingPromotion, categories, products, onIn
           <div className="form-grid">
             <div className="form-group">
               <label className="form-label">
-                {formData.type === 'percentage' || formData.type === 'happy_hour' ? 'Percentuale Sconto (%)' : 
+                {formData.type === 'percentage' ? 'Percentuale Sconto (%)' : 
                  formData.type === 'fixed_amount' ? 'Importo Sconto (€)' :
-                 'Quantità Minima'}
+                 'Quantità Minima per Omaggio'}
               </label>
               <input
                 type="number"
-                name="discount_value"
-                value={formData.discount_value}
+                name="value"
+                value={formData.value}
                 onChange={onInputChange}
                 className="form-input"
                 min="0"
-                step={formData.type === 'percentage' || formData.type === 'happy_hour' ? "1" : "0.01"}
+                step={formData.type === 'percentage' ? "1" : "0.01"}
                 required
               />
             </div>
 
-            {formData.type !== 'buy_x_get_y' && (
-              <div className="form-group">
-                <label className="form-label">Quantità Minima</label>
-                <input
-                  type="number"
-                  name="min_quantity"
-                  value={formData.min_quantity}
-                  onChange={onInputChange}
-                  className="form-input"
-                  min="1"
-                />
-              </div>
-            )}
+            <div className="form-group">
+              <label className="form-label">Ordine Minimo (€)</label>
+              <input
+                type="number"
+                name="min_amount"
+                value={formData.min_amount}
+                onChange={onInputChange}
+                className="form-input"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+              />
+            </div>
           </div>
 
-          {/* Applicazione */}
+          {/* Limitazioni */}
           <div className="form-grid">
             <div className="form-group">
-              <label className="form-label">Applica a</label>
-              <select
-                name="applies_to"
-                value={formData.applies_to}
+              <label className="form-label">Sconto Massimo (€)</label>
+              <input
+                type="number"
+                name="max_discount"
+                value={formData.max_discount}
                 onChange={onInputChange}
-                className="form-select"
-              >
-                <option value="all">Tutti i prodotti</option>
-                <option value="category">Categoria specifica</option>
-                <option value="product">Prodotto specifico</option>
-              </select>
+                className="form-input"
+                min="0"
+                step="0.01"
+                placeholder="Illimitato"
+              />
             </div>
 
-            {formData.applies_to === 'category' && (
-              <div className="form-group">
-                <label className="form-label">Categoria</label>
-                <select
-                  name="target_category_id"
-                  value={formData.target_category_id || ''}
-                  onChange={onInputChange}
-                  className="form-select"
-                >
-                  <option value="">Seleziona categoria</option>
-                  {categories.map(category => (
-                    <option key={category.id} value={category.id}>
-                      {category.icon} {category.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {formData.applies_to === 'product' && (
-              <div className="form-group">
-                <label className="form-label">Prodotto</label>
-                <select
-                  name="target_product_id"
-                  value={formData.target_product_id || ''}
-                  onChange={onInputChange}
-                  className="form-select"
-                >
-                  <option value="">Seleziona prodotto</option>
-                  {products.map(product => (
-                    <option key={product.id} value={product.id}>
-                      {product.name} - €{product.price}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div className="form-group">
+              <label className="form-label">Numero Massimo di Usi</label>
+              <input
+                type="number"
+                name="max_uses"
+                value={formData.max_uses}
+                onChange={onInputChange}
+                className="form-input"
+                min="1"
+                placeholder="Illimitato"
+              />
+            </div>
           </div>
 
           {/* Validità */}
@@ -882,8 +866,8 @@ function PromotionModal({ formData, editingPromotion, categories, products, onIn
               <label className="form-label">Valida da</label>
               <input
                 type="date"
-                name="valid_from"
-                value={formData.valid_from}
+                name="start_date"
+                value={formData.start_date}
                 onChange={onInputChange}
                 className="form-input"
               />
@@ -893,44 +877,42 @@ function PromotionModal({ formData, editingPromotion, categories, products, onIn
               <label className="form-label">Valida fino</label>
               <input
                 type="date"
-                name="valid_until"
-                value={formData.valid_until}
+                name="end_date"
+                value={formData.end_date}
                 onChange={onInputChange}
                 className="form-input"
               />
             </div>
           </div>
 
-          {/* Orari per Happy Hour */}
-          {formData.type === 'happy_hour' && (
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label">Orario inizio</label>
-                <input
-                  type="time"
-                  name="time_from"
-                  value={formData.time_from}
-                  onChange={onInputChange}
-                  className="form-input"
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Orario fine</label>
-                <input
-                  type="time"
-                  name="time_until"
-                  value={formData.time_until}
-                  onChange={onInputChange}
-                  className="form-input"
-                />
-              </div>
+          {/* Orari */}
+          <div className="form-grid">
+            <div className="form-group">
+              <label className="form-label">Orario inizio</label>
+              <input
+                type="time"
+                name="start_time"
+                value={formData.start_time}
+                onChange={onInputChange}
+                className="form-input"
+              />
             </div>
-          )}
+
+            <div className="form-group">
+              <label className="form-label">Orario fine</label>
+              <input
+                type="time"
+                name="end_time"
+                value={formData.end_time}
+                onChange={onInputChange}
+                className="form-input"
+              />
+            </div>
+          </div>
 
           {/* Giorni della settimana */}
           <div className="form-group">
-            <label className="form-label">Giorni della settimana</label>
+            <label className="form-label">Giorni della settimana (opzionale)</label>
             <div className="days-grid">
               {daysOfWeek.map(day => (
                 <div key={day.key} className="day-checkbox">
@@ -944,75 +926,21 @@ function PromotionModal({ formData, editingPromotion, categories, products, onIn
                 </div>
               ))}
             </div>
+            <small style={{color: '#64748b', fontSize: '0.75rem'}}>
+              Se non selezioni nessun giorno, la promozione sarà valida tutti i giorni
+            </small>
           </div>
 
-          {/* Condizioni avanzate */}
-          <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label">Importo minimo ordine (€)</label>
-              <input
-                type="number"
-                name="conditions.min_amount"
-                value={formData.conditions.min_amount}
-                onChange={onInputChange}
-                className="form-input"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Sconto massimo (€)</label>
-              <input
-                type="number"
-                name="conditions.max_discount"
-                value={formData.conditions.max_discount}
-                onChange={onInputChange}
-                className="form-input"
-                min="0"
-                step="0.01"
-                placeholder="Illimitato"
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Numero massimo di usi</label>
-            <input
-              type="number"
-              name="max_uses"
-              value={formData.max_uses || ''}
-              onChange={onInputChange}
-              className="form-input"
-              min="1"
-              placeholder="Illimitato"
-            />
-          </div>
-
-          {/* Opzioni */}
+          {/* Stato */}
           <div className="form-checkbox">
             <input
               type="checkbox"
-              id="combinable"
-              name="conditions.combinable"
-              checked={formData.conditions.combinable}
+              id="active"
+              name="active"
+              checked={formData.active}
               onChange={onInputChange}
             />
-            <label htmlFor="combinable" className="checkbox-label">
-              Combinabile con altre promozioni
-            </label>
-          </div>
-
-          <div className="form-checkbox">
-            <input
-              type="checkbox"
-              id="is_active"
-              name="is_active"
-              checked={formData.is_active}
-              onChange={onInputChange}
-            />
-            <label htmlFor="is_active" className="checkbox-label">
+            <label htmlFor="active" className="checkbox-label">
               Attiva immediatamente
             </label>
           </div>
