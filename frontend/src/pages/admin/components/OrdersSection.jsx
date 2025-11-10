@@ -15,6 +15,14 @@ export default function OrdersSection() {
   const [viewMode, setViewMode] = useState('cards');
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({});
+  
+  // ✅ ENHANCED: PAGINATION STATE
+  const [pagination, setPagination] = useState({
+    limit: 50,
+    offset: 0,
+    total: 0,
+    hasMore: true
+  });
 
   useEffect(() => {
     loadOrders();
@@ -28,64 +36,152 @@ export default function OrdersSection() {
   }, []);
 
   useEffect(() => {
-    filterOrders();
-  }, [orders, searchTerm, statusFilter, dateFilter, tableFilter, paymentFilter]);
+    // ✅ ENHANCED: Reset pagination when filters change
+    setPagination(prev => ({ ...prev, offset: 0 }));
+    loadOrders(true); // Reset load
+  }, [statusFilter, dateFilter, tableFilter, paymentFilter]);
 
-  const loadOrders = async () => {
+  useEffect(() => {
+    filterOrders();
+  }, [orders, searchTerm]);
+
+  // ✅ ENHANCED: PROPER BACKEND INTEGRATION
+  const loadOrders = async (reset = false) => {
     try {
       setError(null);
-      setLoading(true);
+      if (reset) {
+        setLoading(true);
+        setOrders([]);
+      }
       
       const params = new URLSearchParams();
       
-      // Aggiungi filtri alla query se necessario
+      // ✅ ENHANCED: Add all supported backend filters
       if (statusFilter) params.append('status', statusFilter);
-      if (tableFilter && tableFilter !== 'null') params.append('table_id', tableFilter);
+      if (tableFilter && tableFilter !== 'all' && tableFilter !== 'null') {
+        params.append('table_id', tableFilter);
+      }
       if (paymentFilter) params.append('payment_method', paymentFilter);
       
-      const response = await fetch(`http://localhost:3000/api/orders?${params}`, {
-        credentials: 'include'
+      // ✅ ENHANCED: Date filtering backend-side
+      if (dateFilter && dateFilter !== 'all') {
+        const dates = getDateRange(dateFilter);
+        if (dates.from) params.append('date_from', dates.from);
+        if (dates.to) params.append('date_to', dates.to);
+      }
+      
+      // ✅ ENHANCED: Pagination
+      params.append('limit', pagination.limit.toString());
+      params.append('offset', reset ? '0' : pagination.offset.toString());
+      
+      console.log('📡 Loading orders with params:', params.toString());
+      
+      // ✅ FIXED: RELATIVE URL
+      const response = await fetch(`/api/orders?${params}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📊 Orders loaded:', data);
-        setOrders(Array.isArray(data) ? data : []);
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        console.error('❌ Error response:', errorData);
-        setError(errorData.error || 'Errore nel caricamento ordini');
-        setOrders([]);
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
+      
+      const data = await response.json();
+      console.log('📊 Orders response:', data);
+      
+      // ✅ ENHANCED: Handle backend response structure
+      const responseOrders = data.success ? data.orders : (Array.isArray(data) ? data : []);
+      const responsePagination = data.pagination || {};
+      
+      if (reset) {
+        setOrders(responseOrders);
+      } else {
+        // Append for pagination
+        setOrders(prev => [...prev, ...responseOrders]);
+      }
+      
+      // ✅ ENHANCED: Update pagination state
+      setPagination(prev => ({
+        ...prev,
+        offset: reset ? responseOrders.length : prev.offset + responseOrders.length,
+        total: responsePagination.total || responseOrders.length,
+        hasMore: responseOrders.length === pagination.limit
+      }));
+      
     } catch (error) {
       console.error('❌ Network error loading orders:', error);
-      setError('Errore di connessione al server');
-      setOrders([]);
+      setError('Errore di connessione: ' + error.message);
+      if (reset) setOrders([]);
     } finally {
-      setLoading(false);
+      if (reset) setLoading(false);
     }
   };
 
+  // ✅ NEW: Date range calculation for backend
+  const getDateRange = (filter) => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    
+    switch (filter) {
+      case 'today':
+        return { from: todayStr, to: todayStr };
+      case 'yesterday':
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        return { from: yesterdayStr, to: yesterdayStr };
+      case 'week':
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return { from: weekAgo.toISOString().split('T')[0], to: todayStr };
+      case 'month':
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        return { from: monthStart.toISOString().split('T')[0], to: todayStr };
+      default:
+        return { from: null, to: null };
+    }
+  };
+
+  // ✅ ENHANCED: PROPER STATS HANDLING
   const loadStats = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/orders/stats', {
-        credentials: 'include'
+      // ✅ FIXED: RELATIVE URL
+      const response = await fetch('/api/orders/stats', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📈 Stats loaded:', data);
-        setStats(data || {});
-      } else {
-        console.error('❌ Error loading stats');
-        setStats({});
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
+      
+      const data = await response.json();
+      console.log('📈 Stats response:', data);
+      
+      // ✅ ENHANCED: Handle backend response structure
+      setStats(data.success ? data.stats : data);
+      
     } catch (error) {
-      console.error('❌ Network error loading stats:', error);
-      setStats({});
+      console.error('❌ Error loading stats:', error);
+      setStats({
+        total_orders: 0,
+        today_orders: 0,
+        pending_orders: 0,
+        ready_orders: 0,
+        completed_orders: 0,
+        today_revenue: 0
+      });
     }
   };
 
+  // ✅ ENHANCED: Client-side filtering for search only
   const filterOrders = () => {
     if (!Array.isArray(orders)) {
       setFilteredOrders([]);
@@ -94,83 +190,63 @@ export default function OrdersSection() {
 
     let filtered = [...orders];
 
-    // Filtro per testo
+    // Only search term filtering (other filters handled backend-side)
     if (searchTerm) {
       filtered = filtered.filter(order =>
         order.id?.toString().includes(searchTerm) ||
         order.table_number?.toString().includes(searchTerm) ||
         order.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.customer_phone?.includes(searchTerm)
+        order.customer_phone?.includes(searchTerm) ||
+        order.waiter_name?.toLowerCase().includes(searchTerm.toLowerCase())
       );
-    }
-
-    // Filtro per data
-    if (dateFilter) {
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      filtered = filtered.filter(order => {
-        const orderDate = new Date(order.created_at);
-        
-        switch (dateFilter) {
-          case 'today':
-            return orderDate.toDateString() === today.toDateString();
-          case 'yesterday':
-            return orderDate.toDateString() === yesterday.toDateString();
-          case 'week':
-            const weekAgo = new Date(today);
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            return orderDate >= weekAgo;
-          case 'month':
-            return orderDate.getMonth() === today.getMonth() && 
-                   orderDate.getFullYear() === today.getFullYear();
-          default:
-            return true;
-        }
-      });
     }
 
     setFilteredOrders(filtered);
   };
 
+  // ✅ ENHANCED: PROPER STATUS UPDATE
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
-      const response = await fetch(`http://localhost:3000/api/orders/${orderId}`, {
+      console.log('🔄 Updating order status:', { orderId, newStatus });
+      
+      // ✅ FIXED: RELATIVE URL
+      const response = await fetch(`/api/orders/${orderId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         credentials: 'include',
         body: JSON.stringify({ status: newStatus })
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        
-        // Aggiorna l'ordine nella lista
-        setOrders(orders.map(order => 
-          order.id === orderId ? { 
-            ...order, 
-            status: newStatus,
-            served_at: result.served_at || order.served_at,
-            paid_at: result.paid_at || order.paid_at,
-            payment_status: result.payment_status || order.payment_status
-          } : order
-        ));
-        
-        // Ricarica le statistiche
-        loadStats();
-        
-        console.log(`✅ Order ${orderId} updated to: ${newStatus}`);
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        alert(`Errore: ${errorData.error}`);
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
+
+      const result = await response.json();
+      console.log('✅ Status update result:', result);
+      
+      // ✅ ENHANCED: Update order in state
+      setOrders(orders.map(order => 
+        order.id === orderId ? { 
+          ...order, 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        } : order
+      ));
+      
+      // Reload stats
+      loadStats();
+      
     } catch (error) {
-      console.error('Error updating order status:', error);
-      alert('Errore di rete');
+      console.error('❌ Error updating order status:', error);
+      alert(`Errore aggiornamento stato: ${error.message}`);
     }
   };
 
+  // ✅ ENHANCED: PROPER DELETE
   const deleteOrder = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
     
@@ -179,22 +255,38 @@ export default function OrdersSection() {
     }
 
     try {
-      const response = await fetch(`http://localhost:3000/api/orders/${orderId}`, {
+      console.log('🗑️ Deleting order:', orderId);
+      
+      // ✅ FIXED: RELATIVE URL
+      const response = await fetch(`/api/orders/${orderId}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
 
-      if (response.ok) {
-        setOrders(orders.filter(order => order.id !== orderId));
-        loadStats();
-        console.log(`✅ Order ${orderId} deleted`);
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        alert(`Errore: ${errorData.error}`);
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
+
+      // ✅ ENHANCED: Remove from state
+      setOrders(orders.filter(order => order.id !== orderId));
+      loadStats();
+      console.log(`✅ Order ${orderId} deleted`);
+      
     } catch (error) {
-      console.error('Error deleting order:', error);
-      alert('Errore di rete');
+      console.error('❌ Error deleting order:', error);
+      alert(`Errore eliminazione: ${error.message}`);
+    }
+  };
+
+  // ✅ ENHANCED: Load more orders (pagination)
+  const loadMoreOrders = () => {
+    if (pagination.hasMore && !loading) {
+      loadOrders(false);
     }
   };
 
@@ -243,22 +335,7 @@ export default function OrdersSection() {
       <div className="orders-section">
         <div className="loading-spinner">
           <div className="spinner"></div>
-          <p>Caricamento ordini...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="orders-section">
-        <div className="error-state">
-          <span className="error-icon">⚠️</span>
-          <h3>Errore nel caricamento</h3>
-          <p>{error}</p>
-          <button className="btn primary" onClick={loadOrders}>
-            Riprova
-          </button>
+          <p>Caricamento ordini dal database...</p>
         </div>
       </div>
     );
@@ -266,15 +343,18 @@ export default function OrdersSection() {
 
   return (
     <div className="orders-section">
-      {/* Header */}
+      {/* ✅ ENHANCED HEADER WITH PAGINATION INFO */}
       <div className="section-header">
         <div className="header-left">
           <h2>📋 Gestione Ordini</h2>
           <p className="section-subtitle">
-            {stats.total_orders || 0} ordini totali • {stats.pending_orders || 0} in corso • €{parseFloat(stats.today_revenue || 0).toFixed(2)} oggi
-            {stats.revenue_trend && stats.revenue_trend !== 0 && (
-              <span className={`trend ${parseFloat(stats.revenue_trend || 0) > 0 ? 'positive' : 'negative'}`}>
-                {parseFloat(stats.revenue_trend || 0) > 0 ? '📈' : '📉'} {Math.abs(parseFloat(stats.revenue_trend || 0))}%
+            {pagination.total > 0 ? `${pagination.total} ordini totali` : 'Nessun ordine'} • 
+            {stats.pending_orders || 0} in corso • 
+            €{parseFloat(stats.today_revenue || 0).toFixed(2)} oggi
+            {/* ✅ ENHANCED: Show loaded vs total */}
+            {pagination.total > orders.length && (
+              <span className="pagination-info">
+                • Caricati {orders.length}/{pagination.total}
               </span>
             )}
           </p>
@@ -282,7 +362,7 @@ export default function OrdersSection() {
         <div className="header-actions">
           <button 
             className="btn secondary refresh-btn"
-            onClick={() => { loadOrders(); loadStats(); }}
+            onClick={() => { loadOrders(true); loadStats(); }}
             title="Aggiorna ordini"
           >
             🔄 Aggiorna
@@ -312,7 +392,16 @@ export default function OrdersSection() {
         </div>
       </div>
 
-      {/* Statistiche migliorate */}
+      {/* Error display */}
+      {error && (
+        <div className="error-banner">
+          <span className="error-icon">⚠️</span>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="error-close">×</button>
+        </div>
+      )}
+
+      {/* Statistiche (unchanged - already good) */}
       <div className="orders-stats">
         <div className="stat-card mini urgent">
           <span className="stat-icon">⏳</span>
@@ -358,12 +447,12 @@ export default function OrdersSection() {
         </div>
       </div>
 
-      {/* Filtri migliorati */}
+      {/* ✅ ENHANCED FILTERS */}
       <div className="filters">
         <div className="search-container">
           <input
             type="text"
-            placeholder="Cerca ordine, tavolo, cliente, telefono..."
+            placeholder="Cerca ordine, tavolo, cliente, cameriere..."
             className="search-input"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -390,8 +479,8 @@ export default function OrdersSection() {
           value={tableFilter}
           onChange={(e) => setTableFilter(e.target.value)}
         >
-          <option value="">Tutti i tavoli</option>
-          <option value="null">📦 Asporto</option>
+          <option value="all">Tutti i tavoli</option>
+          <option value="null">📦 Solo Asporto</option>
           {getUniqueTableNumbers().map(table => (
             <option key={table} value={table}>
               🪑 Tavolo {table}
@@ -406,30 +495,31 @@ export default function OrdersSection() {
         >
           <option value="">Tutti i pagamenti</option>
           <option value="contanti">💵 Contanti</option>
-          <option value="carta">💳 Carta</option>
+          <option value="carta">💳 Carta di Credito</option>
           <option value="bancomat">💳 Bancomat</option>
-          <option value="app">📱 App</option>
+          <option value="app">📱 App/Digitale</option>
         </select>
 
+        {/* ✅ ENHANCED: Backend date filtering */}
         <select 
           className="filter-select"
           value={dateFilter}
           onChange={(e) => setDateFilter(e.target.value)}
         >
-          <option value="">Tutte le date</option>
+          <option value="all">Tutte le date</option>
           <option value="today">Oggi</option>
           <option value="yesterday">Ieri</option>
           <option value="week">Ultima settimana</option>
           <option value="month">Questo mese</option>
         </select>
 
-        {(searchTerm || statusFilter || tableFilter || paymentFilter || dateFilter !== 'today') && (
+        {(searchTerm || statusFilter || tableFilter !== 'all' || paymentFilter || dateFilter !== 'today') && (
           <button 
             className="btn secondary clear-filters"
             onClick={() => {
               setSearchTerm("");
               setStatusFilter("");
-              setTableFilter("");
+              setTableFilter("all");
               setPaymentFilter("");
               setDateFilter("today");
             }}
@@ -439,7 +529,7 @@ export default function OrdersSection() {
         )}
       </div>
 
-      {/* Contenuto principale */}
+      {/* Contenuto principale (same components, but with enhanced data) */}
       {!Array.isArray(filteredOrders) || filteredOrders.length === 0 ? (
         <div className="empty-state">
           <span className="empty-icon">📋</span>
@@ -458,25 +548,61 @@ export default function OrdersSection() {
           </button>
         </div>
       ) : viewMode === 'cards' ? (
-        <OrdersGrid 
-          orders={filteredOrders}
-          onStatusUpdate={updateOrderStatus}
-          onViewDetails={setSelectedOrder}
-          onDelete={deleteOrder}
-          getStatusLabel={getStatusLabel}
-          getStatusIcon={getStatusIcon}
-          getNextStatus={getNextStatus}
-        />
+        <>
+          <OrdersGrid 
+            orders={filteredOrders}
+            onStatusUpdate={updateOrderStatus}
+            onViewDetails={setSelectedOrder}
+            onDelete={deleteOrder}
+            getStatusLabel={getStatusLabel}
+            getStatusIcon={getStatusIcon}
+            getNextStatus={getNextStatus}
+          />
+          
+          {/* ✅ ENHANCED: Load more button */}
+          {pagination.hasMore && (
+            <div className="load-more-section">
+              <button 
+                className="btn secondary load-more-btn"
+                onClick={loadMoreOrders}
+                disabled={loading}
+              >
+                {loading ? 'Caricando...' : 'Carica Altri Ordini'}
+              </button>
+              <p className="pagination-text">
+                Mostrando {orders.length} di {pagination.total} ordini
+              </p>
+            </div>
+          )}
+        </>
       ) : (
-        <OrdersTable 
-          orders={filteredOrders}
-          onStatusUpdate={updateOrderStatus}
-          onViewDetails={setSelectedOrder}
-          onDelete={deleteOrder}
-          getStatusLabel={getStatusLabel}
-          getStatusIcon={getStatusIcon}
-          getNextStatus={getNextStatus}
-        />
+        <>
+          <OrdersTable 
+            orders={filteredOrders}
+            onStatusUpdate={updateOrderStatus}
+            onViewDetails={setSelectedOrder}
+            onDelete={deleteOrder}
+            getStatusLabel={getStatusLabel}
+            getStatusIcon={getStatusIcon}
+            getNextStatus={getNextStatus}
+          />
+          
+          {/* ✅ ENHANCED: Load more button */}
+          {pagination.hasMore && (
+            <div className="load-more-section">
+              <button 
+                className="btn secondary load-more-btn"
+                onClick={loadMoreOrders}
+                disabled={loading}
+              >
+                {loading ? 'Caricando...' : 'Carica Altri Ordini'}
+              </button>
+              <p className="pagination-text">
+                Mostrando {orders.length} di {pagination.total} ordini
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Modal Dettagli Ordine */}
@@ -497,7 +623,7 @@ export default function OrdersSection() {
           onClose={() => setShowOrderModal(false)}
           onSave={() => {
             setShowOrderModal(false);
-            loadOrders();
+            loadOrders(true);
             loadStats();
           }}
         />
@@ -846,47 +972,266 @@ function OrderDetailsModal({ order, onClose, onStatusUpdate, getStatusLabel, get
   );
 }
 
-// Modal Nuovo Ordine semplificato
+// ✅ ENHANCED: NEW ORDER MODAL WITH FULL PRODUCT INTEGRATION
 function NewOrderModal({ onClose, onSave }) {
   const [loading, setLoading] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(true);
   const [error, setError] = useState(null);
+  const [tables, setTables] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const [orderData, setOrderData] = useState({
+    table_id: null,
+    customer_name: '',
+    customer_phone: '',
+    payment_method: 'contanti',
+    notes: '',
+    items: []
+  });
 
-  const handleCreateTestOrder = async () => {
+  useEffect(() => {
+    loadTables();
+    loadProducts();
+    loadCategories();
+  }, []);
+
+  // ✅ ENHANCED: Load all available products with variants
+  const loadProducts = async () => {
+    try {
+      setLoadingProducts(true);
+      console.log('📦 Loading products for order...');
+      
+      const response = await fetch('/api/products?include_variants=true&active=true', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('📦 Products loaded:', data);
+      
+      // ✅ ENHANCED: Process products with variants for order selection
+      const processedProducts = (data.success ? data.products : data.products || []).map(product => ({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        image_url: product.image_url,
+        category_id: product.category_id,
+        category_name: product.category_name,
+        active: product.active,
+        variants: (product.variants || []).filter(v => v.active).map(variant => ({
+          id: variant.id,
+          name: variant.name,
+          sku: variant.sku,
+          price: parseFloat(variant.price || 0),
+          active: variant.active,
+          full_name: variant.name !== product.name ? `${product.name} - ${variant.name}` : product.name
+        }))
+      })).filter(product => product.active && product.variants.length > 0);
+      
+      setProducts(processedProducts);
+      console.log(`✅ Loaded ${processedProducts.length} active products for ordering`);
+      
+    } catch (error) {
+      console.error('❌ Error loading products:', error);
+      setError('Errore nel caricamento prodotti: ' + error.message);
+      setProducts([]);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  // ✅ ENHANCED: Load categories for filtering
+  const loadCategories = async () => {
+    try {
+      const response = await fetch('/api/products/categories', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data.success ? data.categories : data.categories || []);
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
+
+  const loadTables = async () => {
+    try {
+      const response = await fetch('/api/orders/tables-status', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTables(data.success ? data.tables : []);
+      }
+    } catch (error) {
+      console.error('Error loading tables:', error);
+    }
+  };
+
+  // ✅ ENHANCED: Add product variant to order
+  const addProductToOrder = (product, variant) => {
+    const existingItemIndex = orderData.items.findIndex(
+      item => item.product_variant_id === variant.id
+    );
+
+    if (existingItemIndex >= 0) {
+      // ✅ Increment quantity if already exists
+      const updatedItems = [...orderData.items];
+      updatedItems[existingItemIndex] = {
+        ...updatedItems[existingItemIndex],
+        quantity: updatedItems[existingItemIndex].quantity + 1
+      };
+      
+      setOrderData(prev => ({
+        ...prev,
+        items: updatedItems
+      }));
+    } else {
+      // ✅ Add new item
+      const newItem = {
+        product_variant_id: variant.id,
+        product_name: product.name,
+        variant_name: variant.name,
+        display_name: variant.full_name,
+        quantity: 1,
+        price: variant.price,
+        notes: ''
+      };
+      
+      setOrderData(prev => ({
+        ...prev,
+        items: [...prev.items, newItem]
+      }));
+    }
+
+    console.log('➕ Added product to order:', variant.full_name);
+  };
+
+  // ✅ ENHANCED: Update item quantity
+  const updateItemQuantity = (index, newQuantity) => {
+    if (newQuantity <= 0) {
+      removeItemFromOrder(index);
+      return;
+    }
+
+    const updatedItems = [...orderData.items];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      quantity: parseInt(newQuantity) || 1
+    };
+    
+    setOrderData(prev => ({
+      ...prev,
+      items: updatedItems
+    }));
+  };
+
+  // ✅ ENHANCED: Update item notes
+  const updateItemNotes = (index, notes) => {
+    const updatedItems = [...orderData.items];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      notes: notes
+    };
+    
+    setOrderData(prev => ({
+      ...prev,
+      items: updatedItems
+    }));
+  };
+
+  // ✅ ENHANCED: Remove item from order
+  const removeItemFromOrder = (index) => {
+    const updatedItems = orderData.items.filter((_, i) => i !== index);
+    setOrderData(prev => ({
+      ...prev,
+      items: updatedItems
+    }));
+  };
+
+  // ✅ ENHANCED: Calculate order total
+  const calculateOrderTotal = () => {
+    return orderData.items.reduce((total, item) => {
+      return total + (parseFloat(item.price || 0) * parseInt(item.quantity || 1));
+    }, 0);
+  };
+
+  // ✅ ENHANCED: Filter products
+  const filteredProducts = products.filter(product => {
+    const categoryMatch = selectedCategory === 'all' || product.category_id === selectedCategory;
+    const searchMatch = !searchTerm || 
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.variants.some(v => v.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    return categoryMatch && searchMatch;
+  });
+
+  // ✅ ENHANCED: Submit with proper validation
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
-      // Crea un ordine di test semplice
-      const testOrder = {
-        table_id: null, // Asporto
-        customer_name: 'Cliente Test',
-        customer_phone: '123456789',
-        items: [
-          {
-            product_variant_id: 1,
-            quantity: 1,
-            price: 10.00
-          }
-        ],
-        notes: 'Ordine di test',
-        payment_method: 'contanti'
+      // ✅ ENHANCED: Validate required fields
+      if (!orderData.items || orderData.items.length === 0) {
+        throw new Error('L\'ordine deve contenere almeno un prodotto');
+      }
+
+      // ✅ ENHANCED: Prepare order data for backend
+      const orderPayload = {
+        table_id: orderData.table_id,
+        customer_name: orderData.customer_name.trim() || null,
+        customer_phone: orderData.customer_phone.trim() || null,
+        payment_method: orderData.payment_method,
+        notes: orderData.notes.trim() || null,
+        items: orderData.items.map(item => ({
+          product_variant_id: item.product_variant_id,
+          quantity: parseInt(item.quantity),
+          price: parseFloat(item.price),
+          notes: item.notes?.trim() || null
+        }))
       };
 
-      const response = await fetch('http://localhost:3000/api/orders', {
+      console.log('📤 Creating order:', orderPayload);
+
+      const response = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         credentials: 'include',
-        body: JSON.stringify(testOrder)
+        body: JSON.stringify(orderPayload)
       });
 
-      if (response.ok) {
-        onSave();
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        setError(errorData.error || 'Errore nella creazione ordine');
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
       }
+
+      const result = await response.json();
+      console.log('✅ Order created:', result);
+      
+      onSave();
+      
     } catch (error) {
-      setError('Errore di rete');
+      console.error('❌ Error creating order:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -894,32 +1239,302 @@ function NewOrderModal({ onClose, onSave }) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content">
+      <div className="modal-content extra-large">
         <div className="modal-header">
-          <h3>Nuovo Ordine</h3>
+          <h3>➕ Nuovo Ordine</h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
-        <div className="modal-body">
-          {error && <div className="error-message">❌ {error}</div>}
-          
-          <p>Funzionalità di creazione ordini in sviluppo.</p>
-          <p>Per ora puoi creare un ordine di test:</p>
-        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            {error && <div className="error-message">❌ {error}</div>}
+            
+            <div className="order-form-grid">
+              {/* ✅ LEFT COLUMN: Order Info */}
+              <div className="order-info-section">
+                <div className="form-section">
+                  <h4>📍 Informazioni Ordine</h4>
+                  
+                  <div className="form-group">
+                    <label className="form-label">Tavolo</label>
+                    <select
+                      value={orderData.table_id || ''}
+                      onChange={(e) => setOrderData(prev => ({
+                        ...prev,
+                        table_id: e.target.value ? parseInt(e.target.value) : null
+                      }))}
+                      className="form-select"
+                    >
+                      <option value="">📦 Asporto</option>
+                      {tables.filter(t => t.active && t.status !== 'occupied').map(table => (
+                        <option key={table.id} value={table.id}>
+                          🪑 Tavolo {table.number} ({table.capacity} posti) - {table.location || 'Interno'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-        <div className="modal-actions">
-          <button className="btn secondary" onClick={onClose}>
-            Annulla
-          </button>
-          <button 
-            className="btn primary" 
-            onClick={handleCreateTestOrder}
-            disabled={loading}
-          >
-            {loading ? 'Creando...' : 'Crea Ordine Test'}
-          </button>
-        </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label">Nome Cliente</label>
+                      <input
+                        type="text"
+                        value={orderData.customer_name}
+                        onChange={(e) => setOrderData(prev => ({
+                          ...prev,
+                          customer_name: e.target.value
+                        }))}
+                        className="form-input"
+                        placeholder="Nome del cliente (opzionale)"
+                      />
+                    </div>
+                    
+                    <div className="form-group">
+                      <label className="form-label">Telefono</label>
+                      <input
+                        type="tel"
+                        value={orderData.customer_phone}
+                        onChange={(e) => setOrderData(prev => ({
+                          ...prev,
+                          customer_phone: e.target.value
+                        }))}
+                        className="form-input"
+                        placeholder="Numero di telefono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Metodo di Pagamento</label>
+                    <select
+                      value={orderData.payment_method}
+                      onChange={(e) => setOrderData(prev => ({
+                        ...prev,
+                        payment_method: e.target.value
+                      }))}
+                      className="form-select"
+                    >
+                      <option value="contanti">💵 Contanti</option>
+                      <option value="carta">💳 Carta di Credito</option>
+                      <option value="bancomat">💳 Bancomat</option>
+                      <option value="app">📱 App/Digitale</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Note Ordine</label>
+                    <textarea
+                      value={orderData.notes}
+                      onChange={(e) => setOrderData(prev => ({
+                        ...prev,
+                        notes: e.target.value
+                      }))}
+                      className="form-textarea"
+                      rows="3"
+                      placeholder="Note aggiuntive per l'ordine..."
+                    />
+                  </div>
+                </div>
+
+                {/* ✅ ORDER SUMMARY */}
+                <div className="form-section">
+                  <h4>🧾 Riepilogo Ordine</h4>
+                  
+                  {orderData.items.length === 0 ? (
+                    <div className="empty-cart">
+                      <p>🛒 Nessun prodotto selezionato</p>
+                      <p>Aggiungi prodotti dalla lista a destra</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="order-items-summary">
+                        {orderData.items.map((item, index) => (
+                          <div key={index} className="order-item-row">
+                            <div className="item-info">
+                              <div className="item-name">{item.display_name}</div>
+                              {item.notes && (
+                                <div className="item-notes">📝 {item.notes}</div>
+                              )}
+                            </div>
+                            
+                            <div className="item-controls">
+                              <div className="quantity-controls">
+                                <button
+                                  type="button"
+                                  className="qty-btn minus"
+                                  onClick={() => updateItemQuantity(index, item.quantity - 1)}
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  className="qty-input"
+                                  value={item.quantity}
+                                  onChange={(e) => updateItemQuantity(index, parseInt(e.target.value) || 1)}
+                                  min="1"
+                                  max="99"
+                                />
+                                <button
+                                  type="button"
+                                  className="qty-btn plus"
+                                  onClick={() => updateItemQuantity(index, item.quantity + 1)}
+                                >
+                                  +
+                                </button>
+                              </div>
+                              
+                              <div className="item-price">
+                                €{(parseFloat(item.price) * parseInt(item.quantity)).toFixed(2)}
+                              </div>
+                              
+                              <button
+                                type="button"
+                                className="remove-btn"
+                                onClick={() => removeItemFromOrder(index)}
+                                title="Rimuovi prodotto"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                            
+                            <div className="item-notes-input">
+                              <input
+                                type="text"
+                                placeholder="Note per questo prodotto..."
+                                value={item.notes}
+                                onChange={(e) => updateItemNotes(index, e.target.value)}
+                                className="form-input small"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      <div className="order-total-section">
+                        <div className="total-label">Totale Ordine:</div>
+                        <div className="total-amount">€{calculateOrderTotal().toFixed(2)}</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* ✅ RIGHT COLUMN: Product Selection */}
+              <div className="product-selection-section">
+                <div className="form-section">
+                  <h4>🍽️ Selezione Prodotti</h4>
+                  
+                  {/* ✅ PRODUCTS FILTERS */}
+                  <div className="products-filters">
+                    <div className="search-container">
+                      <input
+                        type="text"
+                        placeholder="Cerca prodotti..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="search-input small"
+                      />
+                      <span className="search-icon">🔍</span>
+                    </div>
+                    
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="filter-select small"
+                    >
+                      <option value="all">Tutte le categorie</option>
+                      {categories.map(category => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* ✅ PRODUCTS LIST */}
+                  <div className="products-list">
+                    {loadingProducts ? (
+                      <div className="loading-products">
+                        <div className="spinner small"></div>
+                        <p>Caricamento prodotti...</p>
+                      </div>
+                    ) : filteredProducts.length === 0 ? (
+                      <div className="no-products">
+                        <p>🚫 Nessun prodotto disponibile</p>
+                        <p>Controlla i filtri o aggiungi prodotti al sistema</p>
+                      </div>
+                    ) : (
+                      filteredProducts.map(product => (
+                        <div key={product.id} className="product-item">
+                          <div className="product-info">
+                            {product.image_url && (
+                              <img
+                                src={product.image_url}
+                                alt={product.name}
+                                className="product-image"
+                              />
+                            )}
+                            <div className="product-details">
+                              <h5 className="product-name">{product.name}</h5>
+                              {product.description && (
+                                <p className="product-description">{product.description}</p>
+                              )}
+                              <span className="product-category">{product.category_name}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="product-variants">
+                            {product.variants.map(variant => (
+                              <div key={variant.id} className="variant-row">
+                                <div className="variant-info">
+                                  <span className="variant-name">{variant.full_name}</span>
+                                  <span className="variant-price">€{variant.price.toFixed(2)}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="add-product-btn"
+                                  onClick={() => addProductToOrder(product, variant)}
+                                >
+                                  ➕ Aggiungi
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn secondary" onClick={onClose}>
+              Annulla
+            </button>
+            <button 
+              type="submit" 
+              className="btn primary large"
+              disabled={loading || orderData.items.length === 0}
+            >
+              {loading ? (
+                <>
+                  <div className="btn-spinner"></div>
+                  Creando ordine...
+                </>
+              ) : (
+                <>
+                  🛒 Crea Ordine (€{calculateOrderTotal().toFixed(2)})
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
+
+// Keep existing components: OrdersGrid, OrdersTable, OrderCard, OrderDetailsModal...
+// They are already well implemented and don't need changes for backend alignment
