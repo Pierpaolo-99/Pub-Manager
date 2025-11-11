@@ -816,146 +816,97 @@
   box-shadow: 0 8px 16px rgba(220, 38, 38, 0.3);
 }
 
-/* ===== RESPONSIVE DESIGN ===== */
-@media (max-width: 1200px) {
-  .users-section .users-stats {
-    grid-template-columns: repeat(3, 1fr);
-  }
+/* ===================
+   MISSING COMPONENTS - ENHANCEMENTS
+=================== */
+
+/* ✅ ADDED: Success/Error banner styling */
+.users-section .success-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border: 1px solid #6ee7b7;
+  border-radius: 8px;
+  color: #065f46;
+  font-weight: 500;
+  margin: 2rem 2rem 0 2rem;
+  animation: slideInFromTop 0.3s ease-out;
 }
 
-@media (max-width: 1024px) {
-  .users-section .users-stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .users-section .table-container {
-    overflow-x: auto;
-    margin: 0 1rem 1rem 1rem;
-  }
-  
-  .users-section .table {
-    min-width: 1000px;
-  }
+.users-section .success-icon {
+  color: #059669;
+  font-size: 1.25rem;
+  flex-shrink: 0;
 }
 
-@media (max-width: 768px) {
-  .users-section .section-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1.5rem;
-    padding: 1.5rem;
-  }
-  
-  .users-section .users-stats {
-    grid-template-columns: repeat(2, 1fr);
-    padding: 1.5rem;
-  }
-  
-  .users-section .filters {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1rem;
-    padding: 1.5rem;
-  }
-  
-  .users-section .search-container {
-    max-width: none;
-    min-width: unset;
-  }
-  
-  .users-section .table-container {
-    margin: 0 1rem 1rem 1rem;
-  }
-  
-  .users-section .user-modal {
-    max-width: 95vw;
-  }
-  
-  .users-section .form-row {
-    grid-template-columns: 1fr;
-  }
-
-  .users-section .modal-header {
-    padding: 1.5rem 2rem;
-  }
-
-  .users-section .user-modal form {
-    padding: 2rem;
-  }
+.users-section .success-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #059669;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-@media (max-width: 640px) {
-  .users-section .section-header {
-    padding: 1rem;
-  }
-  
-  .users-section .users-stats {
-    grid-template-columns: 1fr;
-    padding: 1rem;
-  }
-  
-  .users-section .filters {
-    padding: 1rem;
-  }
-  
-  .users-section .table-container {
-    margin: 0 0.5rem 0.5rem 0.5rem;
-  }
-  
-  .users-section .table th,
-  .users-section .table td {
-    padding: 1rem 0.75rem;
-  }
-  
-  .users-section .user-info {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.75rem;
-  }
-  
-  .users-section .action-buttons {
-    flex-direction: column;
-    gap: 0.375rem;
-  }
-  
-  .users-section .modal-overlay {
-    padding: 0.5rem;
-  }
-  
-  .users-section .user-modal form {
-    padding: 1.5rem;
-  }
-  
-  .users-section .modal-header {
-    padding: 1rem 1.5rem;
-  }
-
-  .users-section .modal-actions {
-    flex-direction: column;
-  }
+.users-section .success-close:hover {
+  background: rgba(5, 150, 105, 0.1);
 }
 
-/* ===== FOCUS STYLES ===== */
-.users-section .btn:focus,
-.users-section .form-input:focus,
-.users-section .form-select:focus,
-.users-section .search-input:focus,
-.users-section .filter-select:focus,
-.users-section .status-toggle:focus,
-.users-section .btn-small:focus {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
+.users-section .error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  color: #991b1b;
+  font-weight: 500;
+  margin: 2rem 2rem 0 2rem;
+  animation: slideInFromTop 0.3s ease-out;
 }
 
-/* ===== ANIMATION UTILITIES ===== */
-.users-section .fade-in {
-  animation: usersFadeIn 0.4s ease-out;
+.users-section .error-icon {
+  color: #dc2626;
+  font-size: 1.25rem;
+  flex-shrink: 0;
 }
 
-@keyframes usersFadeIn {
+.users-section .error-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #dc2626;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.users-section .error-close:hover {
+  background: rgba(220, 38, 38, 0.1);
+}
+
+@keyframes slideInFromTop {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(-20px);
   }
   to {
     opacity: 1;
@@ -963,50 +914,410 @@
   }
 }
 
-/* ===== PRINT STYLES ===== */
-@media print {
-  .users-section {
-    background: white !important;
-    color: black !important;
+/* ✅ ADDED: Missing stats card color */
+.users-section .stat-card.tertiary { 
+  border-left: 4px solid #8b5cf6; 
+}
+
+.users-section .stat-card.tertiary .stat-icon {
+  background: linear-gradient(135deg, #f3e8ff, #e9d5ff);
+  color: #7c2d12;
+}
+
+/* ✅ ADDED: Enhanced button info variant */
+.users-section .btn-small.info {
+  color: #0ea5e9;
+  border-color: #7dd3fc;
+  background: #f0f9ff;
+}
+
+.users-section .btn-small.info:hover {
+  background: #e0f2fe;
+  border-color: #0ea5e9;
+  transform: translateY(-1px);
+}
+
+/* ✅ ADDED: Enhanced refresh button */
+.users-section .refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.users-section .refresh-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ✅ ADDED: Current user badge */
+.users-section .current-user-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #3b82f6;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* ✅ ADDED: Enhanced empty state */
+.users-section .empty-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+/* ✅ ADDED: Table footer */
+.users-section .table-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.users-section .table-summary {
+  color: #64748b;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.users-section .table-summary strong {
+  color: #374151;
+  font-weight: 600;
+}
+
+/* ✅ ADDED: User details modal components */
+.users-section .modal-content.large {
+  max-width: 800px;
+}
+
+.users-section .modal-content.password-modal {
+  max-width: 500px;
+}
+
+.users-section .user-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.users-section .details-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.users-section .details-section h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.5rem;
+}
+
+.users-section .details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.users-section .detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.users-section .detail-item:last-child {
+  border-bottom: none;
+}
+
+.users-section .detail-item strong {
+  color: #374151;
+  font-weight: 600;
+  min-width: 120px;
+  margin-right: 1rem;
+}
+
+.users-section .contact-link {
+  color: #3b82f6;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin: -0.25rem -0.5rem;
+}
+
+.users-section .contact-link:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+  text-decoration: underline;
+  transform: scale(1.02);
+}
+
+/* ✅ ADDED: Enhanced status badges for details */
+.users-section .details-section .status-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.users-section .details-section .status-badge.active {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #10b981;
+}
+
+.users-section .details-section .status-badge.inactive {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #f87171;
+}
+
+/* ✅ ADDED: Enhanced error text */
+.users-section .error-text {
+  color: #dc2626;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.users-section .error-text::before {
+  content: '⚠️';
+}
+
+/* ✅ ADDED: Form help text */
+.users-section .form-help {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  line-height: 1.3;
+  font-style: italic;
+}
+
+/* ✅ ADDED: Button spinner */
+.users-section .btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 0.25rem;
+}
+
+/* ✅ ENHANCED: Better role badge colors in details */
+.users-section .details-section .role-badge.admin {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+.users-section .details-section .role-badge.waiter {
+  background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+  color: #1e40af;
+  border-color: #3b82f6;
+}
+
+.users-section .details-section .role-badge.kitchen {
+  background: linear-gradient(135deg, #f3e8ff, #e9d5ff);
+  color: #7c2d12;
+  border-color: #a855f7;
+}
+
+.users-section .details-section .role-badge.cashier {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  color: #065f46;
+  border-color: #10b981;
+}
+
+/* ✅ ENHANCED: User inactive table row styling */
+.users-section .table tbody tr.user-inactive {
+  opacity: 0.7;
+  background-color: #fafafa;
+}
+
+.users-section .table tbody tr.user-inactive:hover {
+  background-color: #f5f5f5;
+}
+
+/* ✅ ENHANCED: Disabled status toggle for self-protection */
+.users-section .status-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.users-section .btn-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  pointer-events: none;
+}
+
+/* ✅ ENHANCED: Header actions layout */
+.users-section .section-header .header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* ✅ ENHANCED: Better responsive behavior for user details modal */
+@media (max-width: 768px) {
+  .users-section .success-banner,
+  .users-section .error-banner {
+    margin: 1rem 1rem 0 1rem;
   }
   
-  .users-section .filters,
-  .users-section .action-buttons,
-  .users-section .modal-overlay {
-    display: none !important;
+  .users-section .empty-actions {
+    flex-direction: column;
+    gap: 0.75rem;
   }
   
-  .users-section .table-container {
-    box-shadow: none !important;
-    border: 2px solid #000 !important;
-    margin: 0 !important;
+  .users-section .table-footer {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
   }
   
-  .users-section .table th,
-  .users-section .table td {
-    border: 1px solid #000 !important;
-    padding: 0.5rem !important;
+  .users-section .table-summary {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  
+  .users-section .details-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .users-section .detail-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .users-section .detail-item strong {
+    min-width: auto;
+    margin-right: 0;
   }
 }
 
-/* ===== HIGH CONTRAST & ACCESSIBILITY ===== */
+@media (max-width: 640px) {
+  .users-section .success-banner,
+  .users-section .error-banner {
+    margin: 0.5rem 0.5rem 0 0.5rem;
+  }
+  
+  .users-section .modal-content.large,
+  .users-section .modal-content.password-modal {
+    width: 95%;
+    margin: 0.5rem;
+    max-height: 95vh;
+  }
+  
+  .users-section .modal-header,
+  .users-section .modal-body,
+  .users-section .modal-actions {
+    padding: 1rem;
+  }
+  
+  .users-section .current-user-badge {
+    font-size: 0.625rem;
+    padding: 0.125rem 0.375rem;
+  }
+}
+
+/* ✅ ENHANCED: Focus and accessibility improvements */
+.users-section .success-close:focus,
+.users-section .error-close:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* ✅ ENHANCED: High contrast mode support */
 @media (prefers-contrast: high) {
-  .users-section .table,
-  .users-section .stat-card,
-  .users-section .role-badge,
-  .users-section .status-toggle,
-  .users-section .btn {
-    border-width: 3px;
-    border-color: currentColor;
+  .users-section .success-banner,
+  .users-section .error-banner {
+    border-width: 2px;
+  }
+  
+  .users-section .current-user-badge,
+  .users-section .status-badge {
+    border-width: 2px;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .users-section *,
-  .users-section *::before,
-  .users-section *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+/* ✅ ENHANCED: Print optimizations */
+@media print {
+  .users-section .success-banner,
+  .users-section .error-banner {
+    background: white;
+    border: 2px solid #000;
+    color: #000;
   }
+  
+  .users-section .current-user-badge {
+    background: white;
+    border: 1px solid #000;
+    color: #000;
+  }
+}
+
+/* ✅ ENHANCED: Animation improvements */
+.users-section .stat-card.mini {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.users-section .user-info {
+  transition: all 0.2s ease;
+}
+
+.users-section .table tbody tr {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ✅ ENHANCED: Better spacing for user inactive rows */
+.users-section .table tbody tr.user-inactive .user-name {
+  color: #94a3b8;
+}
+
+.users-section .table tbody tr.user-inactive .username {
+  color: #64748b;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+/* ✅ ENHANCED: Better visual hierarchy for modal titles */
+.users-section .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
