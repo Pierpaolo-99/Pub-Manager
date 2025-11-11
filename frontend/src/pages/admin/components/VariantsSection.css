@@ -244,6 +244,58 @@
   background: rgba(220, 38, 38, 0.1);
 }
 
+/* ===== SUCCESS BANNER ===== */
+.variants-section .success-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border: 1px solid #6ee7b7;
+  border-radius: 0;
+  color: #065f46;
+  font-weight: 500;
+  animation: slideInFromTop 0.3s ease-out;
+}
+
+.variants-section .success-icon {
+  color: #059669;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.variants-section .success-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #059669;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.variants-section .success-close:hover {
+  background: rgba(5, 150, 105, 0.1);
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ===== TABLE CONTAINER ===== */
 .variants-section .table-container {
   margin: 0 2rem 2rem 2rem;
@@ -444,6 +496,12 @@
   border-color: #ef4444;
 }
 
+.variants-section .stock-quantity.low-stock {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
 /* ===== STATUS TOGGLE ===== */
 .variants-section .status-toggle {
   display: flex;
@@ -582,6 +640,15 @@
   margin: 0 0 2rem 0;
   color: #64748b;
   font-size: 0.9375rem;
+}
+
+.variants-section .empty-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 1rem;
 }
 
 /* ===== LOADING SPINNER ===== */
@@ -917,12 +984,6 @@
   transform: translateY(-1px);
 }
 
-.variants-section .btn.secondary.small {
-  padding: 0.5rem 1rem;
-  font-size: 0.8125rem;
-  min-height: 36px;
-}
-
 /* ===== RESPONSIVE DESIGN ===== */
 @media (max-width: 1200px) {
   .variants-section .variants-stats {
@@ -1117,4 +1178,498 @@
     border: 1px solid #000 !important;
     padding: 0.5rem !important;
   }
+}
+
+/* ===================
+   MISSING COMPONENTS - ENHANCEMENTS
+=================== */
+
+/* ✅ ADDED: Success banner styling */
+.variants-section .success-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border: 1px solid #6ee7b7;
+  border-radius: 0;
+  color: #065f46;
+  font-weight: 500;
+  animation: slideInFromTop 0.3s ease-out;
+}
+
+.variants-section .success-icon {
+  color: #059669;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.variants-section .success-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #059669;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.variants-section .success-close:hover {
+  background: rgba(5, 150, 105, 0.1);
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ✅ ADDED: Missing stats card colors */
+.variants-section .stat-card.mini.primary::before { 
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
+}
+
+.variants-section .stat-card.mini.tertiary::before { 
+  background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+}
+
+/* ✅ ADDED: Enhanced button variants */
+.variants-section .btn-small.primary {
+  color: #2563eb;
+  border-color: #60a5fa;
+  background: #eff6ff;
+}
+
+.variants-section .btn-small.primary:hover {
+  background: #dbeafe;
+  border-color: #2563eb;
+  transform: translateY(-1px);
+}
+
+.variants-section .btn-small.info {
+  color: #0ea5e9;
+  border-color: #7dd3fc;
+  background: #f0f9ff;
+}
+
+.variants-section .btn-small.info:hover {
+  background: #e0f2fe;
+  border-color: #0ea5e9;
+  transform: translateY(-1px);
+}
+
+/* ✅ ADDED: Enhanced stock status */
+.variants-section .stock-quantity.low-stock {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+/* ✅ ADDED: Table footer and summary */
+.variants-section .table-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.variants-section .table-summary {
+  color: #64748b;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.variants-section .table-summary strong {
+  color: #374151;
+  font-weight: 600;
+}
+
+/* ✅ ADDED: Enhanced empty state */
+.variants-section .empty-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+/* ✅ ADDED: Enhanced error text */
+.variants-section .error-text {
+  color: #dc2626;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.variants-section .error-text::before {
+  content: '⚠️';
+}
+
+/* ✅ ADDED: Button spinner */
+.variants-section .btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 0.25rem;
+}
+
+/* ✅ ADDED: Variant details modal components */
+.variants-section .variant-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.variants-section .details-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.variants-section .details-section h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.5rem;
+}
+
+.variants-section .details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.variants-section .detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.variants-section .detail-item:last-child {
+  border-bottom: none;
+}
+
+.variants-section .detail-item strong {
+  color: #374151;
+  font-weight: 600;
+  min-width: 120px;
+  margin-right: 1rem;
+}
+
+/* ✅ ADDED: Enhanced status badges for details */
+.variants-section .status-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.variants-section .status-badge.active {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #10b981;
+}
+
+.variants-section .status-badge.inactive {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #f87171;
+}
+
+/* ✅ ADDED: Enhanced price difference indicators */
+.variants-section .price-diff.increase {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #92400e;
+  border: 1px solid #f59e0b;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.variants-section .price-diff.decrease {
+  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+  color: #166534;
+  border: 1px solid #10b981;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+/* ✅ ADDED: Enhanced stock badges for details */
+.variants-section .stock-badge {
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid;
+  text-align: center;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.variants-section .stock-badge.in-stock {
+  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+  color: #166534;
+  border-color: #10b981;
+}
+
+.variants-section .stock-badge.out-stock {
+  background: linear-gradient(135deg, #fef2f2, #fecaca);
+  color: #dc2626;
+  border-color: #ef4444;
+}
+
+/* ✅ ADDED: Stock status indicators for details */
+.variants-section .stock-status {
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.variants-section .stock-status.good {
+  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+  color: #166534;
+  border-color: #10b981;
+}
+
+.variants-section .stock-status.low {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #92400e;
+  border-color: #f59e0b;
+}
+
+.variants-section .stock-status.empty {
+  background: linear-gradient(135deg, #fef2f2, #fecaca);
+  color: #dc2626;
+  border-color: #ef4444;
+}
+
+/* ✅ ENHANCED: Better responsive behavior for variant details modal */
+@media (max-width: 768px) {
+  .variants-section .success-banner {
+    padding: 1rem 1.5rem;
+  }
+  
+  .variants-section .empty-actions {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .variants-section .table-footer {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  
+  .variants-section .table-summary {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  
+  .variants-section .details-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .variants-section .detail-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .variants-section .detail-item strong {
+    min-width: auto;
+    margin-right: 0;
+  }
+
+  .variants-section .price-diff.increase,
+  .variants-section .price-diff.decrease {
+    margin-top: 0.25rem;
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .variants-section .success-banner {
+    padding: 1rem;
+  }
+  
+  .variants-section .modal-content.large {
+    width: 95%;
+    margin: 0.5rem;
+    max-height: 95vh;
+  }
+  
+  .variants-section .modal-header,
+  .variants-section .modal-body,
+  .variants-section .modal-actions {
+    padding: 1.5rem;
+  }
+  
+  .variants-section .status-badge,
+  .variants-section .stock-badge,
+  .variants-section .stock-status {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .variants-section .price-diff.increase,
+  .variants-section .price-diff.decrease {
+    font-size: 0.6875rem;
+    padding: 0.125rem 0.375rem;
+  }
+}
+
+/* ✅ ENHANCED: Focus and accessibility improvements */
+.variants-section .success-close:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* ✅ ENHANCED: High contrast mode support */
+@media (prefers-contrast: high) {
+  .variants-section .success-banner {
+    border-width: 2px;
+  }
+  
+  .variants-section .status-badge,
+  .variants-section .stock-badge,
+  .variants-section .stock-status,
+  .variants-section .price-diff.increase,
+  .variants-section .price-diff.decrease {
+    border-width: 2px;
+  }
+}
+
+/* ✅ ENHANCED: Print optimizations */
+@media print {
+  .variants-section .success-banner {
+    background: white;
+    border: 2px solid #000;
+    color: #000;
+  }
+  
+  .variants-section .status-badge,
+  .variants-section .stock-badge,
+  .variants-section .stock-status {
+    background: white;
+    border: 1px solid #000;
+    color: #000;
+  }
+
+  .variants-section .table-footer {
+    display: none;
+  }
+}
+
+/* ✅ ENHANCED: Animation improvements */
+.variants-section .stat-card.mini {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.variants-section .variant-info {
+  transition: all 0.2s ease;
+}
+
+.variants-section .table tbody tr {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ✅ ENHANCED: Better visual hierarchy for modal titles */
+.variants-section .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ✅ ENHANCED: Auto-clear message animations */
+.variants-section .success-banner {
+  position: relative;
+  overflow: hidden;
+}
+
+.variants-section .success-banner::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 0%;
+  background: #059669;
+  animation: progressBar 5s linear forwards;
+}
+
+@keyframes progressBar {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+/* ✅ ENHANCED: Improved variant row styling */
+.variants-section .variant-row {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.variants-section .variant-row:hover {
+  background: #f8fafc;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.variants-section .variant-row.inactive .variant-name {
+  color: #94a3b8;
+}
+
+.variants-section .variant-row.inactive .product-name {
+  color: #94a3b8;
+}
+
+/* ✅ ENHANCED: Better spacing and alignment */
+.variants-section .form-grid .form-row:last-child {
+  margin-bottom: 0;
+}
+
+.variants-section .product-preview {
+  border-left: 4px solid #3b82f6;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
 }
