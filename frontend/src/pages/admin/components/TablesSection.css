@@ -89,6 +89,7 @@
 .stat-card.warning { border-left: 4px solid #f59e0b; }
 .stat-card.info { border-left: 4px solid #3b82f6; }
 .stat-card.secondary { border-left: 4px solid #6b7280; }
+.stat-card.primary { border-left: 4px solid #3b82f6; }
 
 .stat-icon {
   font-size: 1.25rem;
@@ -167,6 +168,22 @@
 
 .clear-filters {
   white-space: nowrap;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-filters:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
 }
 
 /* Tables Grid View */
@@ -846,107 +863,482 @@
   font-size: 0.875rem;
 }
 
-/* Responsive Design */
+/* ===================
+   MISSING COMPONENTS - ENHANCEMENTS
+=================== */
+
+/* ✅ ADDED: Success banner styling */
+.tables-section .success-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border: 1px solid #6ee7b7;
+  border-radius: 8px;
+  color: #065f46;
+  font-weight: 500;
+  margin-bottom: 1.5rem;
+  animation: slideInFromTop 0.3s ease-out;
+}
+
+.tables-section .success-icon {
+  color: #059669;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.tables-section .success-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #059669;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tables-section .success-close:hover {
+  background: rgba(5, 150, 105, 0.1);
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ✅ ADDED: Missing stats card color */
+.tables-section .stat-card.primary { 
+  border-left: 4px solid #3b82f6; 
+}
+
+/* ✅ ADDED: Enhanced button styles */
+.tables-section .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  line-height: 1;
+}
+
+.tables-section .btn.primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border-color: #2563eb;
+}
+
+.tables-section .btn.primary:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.tables-section .btn.secondary {
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+  color: white;
+  border-color: #4b5563;
+}
+
+.tables-section .btn.secondary:hover {
+  background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(75, 85, 99, 0.3);
+}
+
+.tables-section .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.tables-section .refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.tables-section .refresh-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ✅ ADDED: Enhanced empty state */
+.tables-section .empty-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+/* ✅ ADDED: Table footer */
+.tables-section .table-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.tables-section .table-summary {
+  color: #64748b;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.tables-section .table-summary strong {
+  color: #374151;
+  font-weight: 600;
+}
+
+/* ✅ ADDED: Table details modal components */
+.tables-section .table-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.tables-section .details-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.tables-section .details-section h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.5rem;
+}
+
+.tables-section .details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.tables-section .detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.tables-section .detail-item:last-child {
+  border-bottom: none;
+}
+
+.tables-section .detail-item strong {
+  color: #374151;
+  font-weight: 600;
+  min-width: 120px;
+  margin-right: 1rem;
+}
+
+.tables-section .notes-content {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: #374151;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.tables-section .order-details {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.tables-section .order-details .detail-item {
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #bae6fd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tables-section .order-details .detail-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.tables-section .order-details strong {
+  color: #0c4a6e;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* ✅ ADDED: Enhanced form components */
+.tables-section .form-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+}
+
+.tables-section .form-help {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  line-height: 1.3;
+  font-style: italic;
+}
+
+.tables-section .error-text {
+  color: #dc2626;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tables-section .error-text::before {
+  content: '⚠️';
+}
+
+.tables-section .btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 0.25rem;
+}
+
+/* ✅ ENHANCED: Modal content sizing for table details */
+.tables-section .modal-content.large {
+  max-width: 800px;
+}
+
+/* ✅ ENHANCED: Better status badge alignment in details */
+.tables-section .details-section .status-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ✅ ENHANCED: Enhanced table status colors for details modal */
+.tables-section .details-section .status-badge.libero {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.tables-section .details-section .status-badge.occupato {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.tables-section .details-section .status-badge.riservato {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.tables-section .details-section .status-badge.pulizia {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.tables-section .details-section .status-badge.fuori_servizio {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* ✅ ENHANCED: Better responsive behavior for details modal */
 @media (max-width: 768px) {
-  .section-header {
+  .tables-section .section-header {
     flex-direction: column;
-    gap: 1rem;
     align-items: stretch;
+    gap: 1rem;
   }
   
-  .header-actions {
+  .tables-section .header-actions {
+    flex-direction: row;
     justify-content: space-between;
   }
   
-  .filters {
+  .tables-section .filters {
     flex-direction: column;
     align-items: stretch;
     gap: 0.75rem;
   }
   
-  .search-container {
+  .tables-section .filter-select {
     min-width: auto;
   }
   
-  .filter-select {
-    min-width: auto;
+  .tables-section .table-footer {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
   }
   
-  .tables-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .tables-stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .table-actions {
-    flex-direction: row;
-    align-items: center;
-  }
-  
-  .status-actions,
-  .general-actions {
-    flex: 1;
-  }
-  
-  .action-buttons {
+  .tables-section .table-summary {
     flex-direction: column;
     gap: 0.25rem;
   }
   
-  .modal-content {
-    margin: 0.5rem;
-    max-height: calc(100vh - 1rem);
+  .tables-section .empty-actions {
+    flex-direction: column;
+    gap: 0.75rem;
   }
   
-  .form-row {
+  .tables-section .details-grid {
     grid-template-columns: 1fr;
   }
   
-  .table {
-    font-size: 0.8rem;
+  .tables-section .detail-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
   }
   
-  .table th,
-  .table td {
-    padding: 0.75rem 0.5rem;
+  .tables-section .detail-item strong {
+    min-width: auto;
+    margin-right: 0;
   }
 }
 
-@media (max-width: 480px) {
-  .tables-stats {
+@media (max-width: 640px) {
+  .tables-section .tables-stats {
     grid-template-columns: 1fr;
   }
   
-  .btn-small {
-    padding: 0.5rem;
-    min-width: 2.5rem;
+  .tables-section .action-buttons {
+    flex-direction: column;
+    gap: 0.25rem;
   }
   
-  .status-actions,
-  .general-actions {
+  .tables-section .btn-small {
+    padding: 0.25rem 0.375rem;
+    font-size: 0.7rem;
+    min-width: 36px;
+    height: 32px;
+    display: flex;
+    align-items: center;
     justify-content: center;
   }
+  
+  .tables-section .modal-content.large {
+    width: 95%;
+    margin: 0.5rem;
+    max-height: 95vh;
+  }
+  
+  .tables-section .modal-header,
+  .tables-section .modal-body,
+  .tables-section .modal-actions {
+    padding: 1rem;
+  }
 }
 
-/* Print Styles for QR Codes */
+/* ✅ ENHANCED: Focus and accessibility improvements */
+.tables-section .clear-filters:focus,
+.tables-section .refresh-btn:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* ✅ ENHANCED: High contrast mode support */
+@media (prefers-contrast: high) {
+  .tables-section .status-badge,
+  .tables-section .stat-card {
+    border-width: 2px;
+  }
+  
+  .tables-section .table-card {
+    border-width: 3px;
+  }
+}
+
+/* ✅ ENHANCED: Print optimizations for table details */
 @media print {
-  .modal-overlay {
+  .tables-section .success-banner,
+  .tables-section .error-banner {
     background: white;
+    border: 2px solid #000;
+    color: #000;
   }
   
-  .modal-content {
-    box-shadow: none;
-    border: 1px solid #000;
-  }
-  
-  .modal-header,
-  .modal-actions {
+  .tables-section .action-buttons,
+  .tables-section .header-actions {
     display: none;
   }
   
-  .qr-content {
-    page-break-inside: avoid;
+  .tables-section .table,
+  .tables-section .table-details {
+    font-size: 0.8rem;
   }
+}
+
+/* ✅ ENHANCED: Animation improvements */
+.tables-section .table-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tables-section .table-card:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  transform: translateY(-4px);
+}
+
+.tables-section .btn,
+.tables-section .btn-small {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ✅ ENHANCED: Better spacing for status actions */
+.tables-section .status-actions {
+  gap: 0.375rem;
+}
+
+.tables-section .general-actions {
+  gap: 0.375rem;
 }

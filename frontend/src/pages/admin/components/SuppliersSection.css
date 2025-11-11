@@ -1226,36 +1226,3 @@
     text-decoration: underline;
   }
 }
-
-/* ✅ ENHANCED: Dark mode support (bonus) */
-@media (prefers-color-scheme: dark) {
-  .suppliers-section {
-    background: #0f172a;
-    color: #e2e8f0;
-  }
-  
-  .suppliers-section .section-header,
-  .suppliers-section .filters-section,
-  .suppliers-section .table-container,
-  .suppliers-section .modal-content {
-    background: #1e293b;
-    border-color: #334155;
-    color: #e2e8f0;
-  }
-  
-  .suppliers-section .stat-card.mini {
-    background: #1e293b;
-    border-color: #334155;
-    color: #e2e8f0;
-  }
-  
-  .suppliers-section .table tbody tr:hover,
-  .suppliers-section .products-table tbody tr:hover {
-    background: #334155;
-  }
-  
-  .suppliers-section .details-section {
-    background: #1e293b;
-    border-color: #334155;
-  }
-}
