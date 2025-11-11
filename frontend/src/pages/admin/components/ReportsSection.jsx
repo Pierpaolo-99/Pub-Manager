@@ -7,6 +7,7 @@ export default function ReportsSection() {
   const [loading, setLoading] = useState(false);
   const [activeReport, setActiveReport] = useState(null);
   const [reportData, setReportData] = useState(null);
+  const [error, setError] = useState(null);
 
   const reportTypes = [
     { id: 'sales', name: 'Report Vendite', icon: '💰', description: 'Analisi vendite per periodo' },
@@ -19,24 +20,47 @@ export default function ReportsSection() {
     fetchQuickStats();
   }, []);
 
+  // ✅ FIXED: Gestione response corretta
   const fetchQuickStats = async () => {
     try {
+      console.log('📊 Fetching quick stats...');
       const response = await fetch('http://localhost:3000/api/reports/quick-stats', {
         credentials: 'include'
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        setQuickStats(data);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      
+      const responseData = await response.json();
+      console.log('✅ Quick stats response:', responseData);
+      
+      // ✅ FIXED: Accesso corretto alla struttura backend
+      if (responseData.success && responseData.data) {
+        setQuickStats(responseData.data);
+      } else {
+        throw new Error(responseData.error || 'Dati non disponibili');
       }
     } catch (err) {
       console.error('❌ Error fetching quick stats:', err);
+      setError(`Errore statistiche: ${err.message}`);
+      // Fallback data
+      setQuickStats({
+        revenue_today: 0,
+        revenue_change: 0,
+        orders_today: 0,
+        orders_change: 0,
+        avg_order_value: 0,
+        top_product: { name: 'N/A', quantity: 0 }
+      });
     }
   };
 
+  // ✅ FIXED: Gestione response reports corretta
   const fetchReport = async (reportType) => {
     setLoading(true);
     setActiveReport(reportType);
+    setError(null);
     
     try {
       let endpoint = '';
@@ -55,18 +79,33 @@ export default function ReportsSection() {
         case 'costs':
           endpoint = `http://localhost:3000/api/reports/costs?${params}`;
           break;
+        default:
+          throw new Error('Tipo report non valido');
       }
+      
+      console.log(`📊 Fetching ${reportType} report:`, endpoint);
       
       const response = await fetch(endpoint, {
         credentials: 'include'
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        setReportData(data);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
       }
+      
+      const responseData = await response.json();
+      console.log(`✅ ${reportType} report response:`, responseData);
+      
+      // ✅ FIXED: Verifica struttura response
+      if (responseData.success) {
+        setReportData(responseData);
+      } else {
+        throw new Error(responseData.error || 'Dati report non disponibili');
+      }
+      
     } catch (err) {
-      console.error('❌ Error fetching report:', err);
+      console.error(`❌ Error fetching ${reportType} report:`, err);
+      setError(`Errore caricamento ${reportType}: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -80,7 +119,8 @@ export default function ReportsSection() {
   };
 
   const formatPercentage = (value) => {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+    const numValue = parseFloat(value) || 0;
+    return `${numValue >= 0 ? '+' : ''}${numValue.toFixed(1)}%`;
   };
 
   const exportReport = async (reportType) => {
@@ -90,15 +130,31 @@ export default function ReportsSection() {
 
   return (
     <div className="reports-section">
+      {/* Error Banner */}
+      {error && (
+        <div className="error-banner">
+          <span className="error-icon">⚠️</span>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="error-close">×</button>
+        </div>
+      )}
+
+      {/* Header */}
       <div className="section-header">
         <div>
           <h2>📈 Report & Analytics</h2>
-          <p className="section-subtitle">Dashboard di reporting e analisi</p>
+          <p className="section-subtitle">
+            Dashboard di reporting e analisi • Database reale
+          </p>
         </div>
         <div className="period-selector">
           <select 
             value={selectedPeriod} 
-            onChange={(e) => setSelectedPeriod(e.target.value)}
+            onChange={(e) => {
+              setSelectedPeriod(e.target.value);
+              // Auto-refresh quick stats on period change
+              fetchQuickStats();
+            }}
             className="form-select"
           >
             <option value="day">Oggi</option>
@@ -109,20 +165,20 @@ export default function ReportsSection() {
         </div>
       </div>
 
-      {/* Quick Stats */}
+      {/* ✅ FIXED: Quick Stats con accesso corretto */}
       <div className="quick-stats">
         <div className="stat-card">
           <h4>💰 Vendite Oggi</h4>
           <div className="stat-value">{formatCurrency(quickStats.revenue_today)}</div>
-          <div className={`stat-change ${quickStats.revenue_change >= 0 ? 'positive' : 'negative'}`}>
-            {formatPercentage(quickStats.revenue_change || 0)}
+          <div className={`stat-change ${(quickStats.revenue_change || 0) >= 0 ? 'positive' : 'negative'}`}>
+            {formatPercentage(quickStats.revenue_change)}
           </div>
         </div>
         <div className="stat-card">
           <h4>📋 Ordini Completati</h4>
           <div className="stat-value">{quickStats.orders_today || 0}</div>
-          <div className={`stat-change ${quickStats.orders_change >= 0 ? 'positive' : 'negative'}`}>
-            {formatPercentage(quickStats.orders_change || 0)}
+          <div className={`stat-change ${(quickStats.orders_change || 0) >= 0 ? 'positive' : 'negative'}`}>
+            {formatPercentage(quickStats.orders_change)}
           </div>
         </div>
         <div className="stat-card">
@@ -133,10 +189,10 @@ export default function ReportsSection() {
           </div>
         </div>
         <div className="stat-card">
-          <h4>📊 Margine Medio</h4>
-          <div className="stat-value">{quickStats.margin_percentage || 0}%</div>
+          <h4>💰 Ordine Medio</h4>
+          <div className="stat-value">{formatCurrency(quickStats.avg_order_value)}</div>
           <div className="stat-change">
-            Valore medio ordine: {formatCurrency(quickStats.avg_order_value)}
+            Database reale
           </div>
         </div>
       </div>
@@ -156,11 +212,19 @@ export default function ReportsSection() {
                 onClick={() => fetchReport(report.id)}
                 disabled={loading && activeReport === report.id}
               >
-                {loading && activeReport === report.id ? 'Caricando...' : 'Visualizza'}
+                {loading && activeReport === report.id ? (
+                  <>
+                    <span className="loading-spinner"></span>
+                    Caricando...
+                  </>
+                ) : (
+                  'Visualizza'
+                )}
               </button>
               <button 
                 className="btn secondary"
                 onClick={() => exportReport(report.id)}
+                disabled={!reportData || activeReport !== report.id}
               >
                 📥 Esporta
               </button>
@@ -173,16 +237,33 @@ export default function ReportsSection() {
       {reportData && (
         <div className="report-display">
           <div className="report-header">
-            <h3>📊 {reportTypes.find(r => r.id === activeReport)?.name}</h3>
-            <button 
-              className="btn secondary"
-              onClick={() => {
-                setActiveReport(null);
-                setReportData(null);
-              }}
-            >
-              ✕ Chiudi
-            </button>
+            <h3>
+              📊 {reportTypes.find(r => r.id === activeReport)?.name}
+              {reportData.period && (
+                <small> • {reportData.period}</small>
+              )}
+              {reportData.date_range && (
+                <small> • {reportData.date_range.start} → {reportData.date_range.end}</small>
+              )}
+            </h3>
+            <div className="report-header-actions">
+              <button 
+                className="btn secondary"
+                onClick={() => fetchReport(activeReport)}
+                title="Aggiorna report"
+              >
+                🔄
+              </button>
+              <button 
+                className="btn secondary"
+                onClick={() => {
+                  setActiveReport(null);
+                  setReportData(null);
+                }}
+              >
+                ✕ Chiudi
+              </button>
+            </div>
           </div>
           
           <div className="report-content">
@@ -197,7 +278,7 @@ export default function ReportsSection() {
   );
 }
 
-// Component per visualizzare report vendite
+// ✅ FIXED: SalesReportDisplay - struttura allineata
 function SalesReportDisplay({ data }) {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('it-IT', {
@@ -228,10 +309,10 @@ function SalesReportDisplay({ data }) {
       </div>
 
       <div className="sales-chart">
-        <h4>📊 Andamento Vendite</h4>
+        <h4>📊 Andamento Vendite ({data.group_by || 'giornaliero'})</h4>
         <div className="chart-placeholder">
-          {/* TODO: Implementa grafico con Chart.js o Recharts */}
-          <p>Grafico vendite nel tempo (da implementare)</p>
+          <p>Grafico vendite nel tempo (da implementare con Chart.js)</p>
+          <small>Dati disponibili per {data.data?.length || 0} periodi</small>
         </div>
       </div>
 
@@ -239,23 +320,25 @@ function SalesReportDisplay({ data }) {
         <table className="report-table">
           <thead>
             <tr>
-              <th>Data</th>
+              <th>Periodo</th>
               <th>Ordini</th>
               <th>Ricavi</th>
               <th>Valore Medio</th>
-              <th>Contante</th>
-              <th>Carta</th>
+              <th>💰 Contante</th>
+              <th>💳 Carta</th>
+              <th>🏧 Bancomat</th>
             </tr>
           </thead>
           <tbody>
-            {data.data?.map((day, index) => (
+            {data.data?.map((period, index) => (
               <tr key={index}>
-                <td>{day.period}</td>
-                <td>{day.orders_count}</td>
-                <td>{formatCurrency(day.total_revenue)}</td>
-                <td>{formatCurrency(day.avg_order_value)}</td>
-                <td>{formatCurrency(day.cash_revenue)}</td>
-                <td>{formatCurrency(day.card_revenue)}</td>
+                <td>{period.period}</td>
+                <td>{period.orders_count}</td>
+                <td>{formatCurrency(period.total_revenue)}</td>
+                <td>{formatCurrency(period.avg_order_value)}</td>
+                <td>{formatCurrency(period.payment_breakdown?.cash)}</td>
+                <td>{formatCurrency(period.payment_breakdown?.card)}</td>
+                <td>{formatCurrency(period.payment_breakdown?.debit)}</td>
               </tr>
             ))}
           </tbody>
@@ -265,7 +348,7 @@ function SalesReportDisplay({ data }) {
   );
 }
 
-// Component per visualizzare prodotti top
+// ✅ FIXED: ProductsReportDisplay - struttura allineata
 function ProductsReportDisplay({ data }) {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('it-IT', {
@@ -276,7 +359,13 @@ function ProductsReportDisplay({ data }) {
 
   return (
     <div className="products-report">
-      <h4>🏆 Prodotti Più Venduti</h4>
+      <h4>
+        🏆 Prodotti Più Venduti 
+        {data.summary && (
+          <small> • {data.summary.total_products} prodotti • {formatCurrency(data.summary.total_revenue)} totali</small>
+        )}
+      </h4>
+      
       <div className="products-table">
         <table className="report-table">
           <thead>
@@ -288,18 +377,45 @@ function ProductsReportDisplay({ data }) {
               <th>Ricavi</th>
               <th>% Ricavi</th>
               <th>Ordini</th>
+              <th>Prezzo Medio</th>
             </tr>
           </thead>
           <tbody>
             {data.products?.map((product, index) => (
               <tr key={product.product_id}>
-                <td>#{index + 1}</td>
-                <td>{product.product_name}</td>
-                <td>{product.category_name}</td>
-                <td>{product.total_quantity_sold}</td>
-                <td>{formatCurrency(product.total_revenue)}</td>
-                <td>{product.revenue_percentage.toFixed(1)}%</td>
+                <td>
+                  <span className="rank">#{product.rank || index + 1}</span>
+                </td>
+                <td>
+                  <div className="product-info">
+                    <div className="product-name">{product.full_name}</div>
+                    {product.sku && (
+                      <div className="product-sku">SKU: {product.sku}</div>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  <span 
+                    className="category-tag" 
+                    style={{ 
+                      backgroundColor: product.category_color || '#6B7280',
+                      color: 'white'
+                    }}
+                  >
+                    {product.category}
+                  </span>
+                </td>
+                <td>
+                  <span className="quantity-sold">{product.total_quantity_sold}</span>
+                </td>
+                <td>
+                  <span className="revenue">{formatCurrency(product.total_revenue)}</span>
+                </td>
+                <td>
+                  <span className="percentage">{product.revenue_percentage.toFixed(1)}%</span>
+                </td>
                 <td>{product.orders_count}</td>
+                <td>{formatCurrency(product.avg_price)}</td>
               </tr>
             ))}
           </tbody>
@@ -309,17 +425,28 @@ function ProductsReportDisplay({ data }) {
   );
 }
 
-// Component per visualizzare report inventario
+// ✅ FIXED: InventoryReportDisplay - campi corretti
 function InventoryReportDisplay({ data }) {
   const getStatusIcon = (status) => {
     const icons = {
       'esaurito': '🔴',
-      'critico': '🟡',
+      'critico': '🟡', 
       'scadenza_vicina': '🟠',
       'eccesso': '🔵',
       'ok': '🟢'
     };
     return icons[status] || '⚫';
+  };
+
+  const getStatusLabel = (status) => {
+    const labels = {
+      'esaurito': 'Esaurito',
+      'critico': 'Stock Critico',
+      'scadenza_vicina': 'Scadenza Vicina',
+      'eccesso': 'Eccesso Stock',
+      'ok': 'Normale'
+    };
+    return labels[status] || status;
   };
 
   return (
@@ -341,6 +468,10 @@ function InventoryReportDisplay({ data }) {
           <span>⚠️ Alert Totali:</span>
           <strong>{data.stats?.alerts || 0}</strong>
         </div>
+        <div className="stat-item">
+          <span>💰 Valore Totale:</span>
+          <strong>{formatCurrency(data.stats?.total_inventory_value)}</strong>
+        </div>
       </div>
 
       <div className="inventory-table">
@@ -348,11 +479,13 @@ function InventoryReportDisplay({ data }) {
           <thead>
             <tr>
               <th>Stato</th>
-              <th>Ingrediente</th>
-              <th>Disponibile</th>
-              <th>Minimo</th>
-              <th>Scadenza</th>
+              <th>Prodotto</th>
+              <th>Categoria</th>
+              <th>Quantità</th>
+              <th>Min/Max</th>
+              <th>Valore</th>
               <th>Fornitore</th>
+              <th>Scadenza</th>
             </tr>
           </thead>
           <tbody>
@@ -360,20 +493,64 @@ function InventoryReportDisplay({ data }) {
               <tr key={index} className={item.stock_status}>
                 <td>
                   <span className="status-indicator">
-                    {getStatusIcon(item.stock_status)} {item.stock_status}
+                    {getStatusIcon(item.stock_status)} {getStatusLabel(item.stock_status)}
                   </span>
                 </td>
-                <td>{item.ingredient_name}</td>
-                <td>{item.available_quantity} {item.ingredient_unit}</td>
-                <td>{item.min_threshold} {item.ingredient_unit}</td>
+                <td>
+                  <div className="product-info">
+                    <div className="product-name">{item.full_name}</div>
+                    {item.sku && (
+                      <div className="product-sku">SKU: {item.sku}</div>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  <span 
+                    className="category-tag" 
+                    style={{ 
+                      backgroundColor: item.category_color || '#6B7280',
+                      color: 'white'
+                    }}
+                  >
+                    {item.category}
+                  </span>
+                </td>
+                <td>
+                  <span className="quantity">
+                    {item.quantity} {item.unit}
+                  </span>
+                </td>
+                <td>
+                  <div className="thresholds">
+                    <div>Min: {item.min_threshold} {item.unit}</div>
+                    {item.max_threshold && (
+                      <div>Max: {item.max_threshold} {item.unit}</div>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  <div className="value-info">
+                    <div className="total-value">{formatCurrency(item.total_value)}</div>
+                    <div className="unit-cost">{formatCurrency(item.cost_per_unit)}/{item.unit}</div>
+                  </div>
+                </td>
+                <td>{item.supplier}</td>
                 <td>
                   {item.expiry_date ? (
-                    <span className={item.days_to_expiry <= 7 ? 'text-danger' : ''}>
-                      {item.expiry_date} ({item.days_to_expiry}gg)
-                    </span>
-                  ) : 'N/A'}
+                    <div className="expiry-info">
+                      <div className={item.days_to_expiry <= 7 ? 'text-danger' : ''}>
+                        {new Date(item.expiry_date).toLocaleDateString('it-IT')}
+                      </div>
+                      <small>
+                        {item.days_to_expiry !== null && (
+                          `${item.days_to_expiry} giorni`
+                        )}
+                      </small>
+                    </div>
+                  ) : (
+                    <span className="no-expiry">N/A</span>
+                  )}
                 </td>
-                <td>{item.supplier || 'N/A'}</td>
               </tr>
             ))}
           </tbody>
@@ -383,7 +560,7 @@ function InventoryReportDisplay({ data }) {
   );
 }
 
-// Component per visualizzare analisi costi
+// ✅ FIXED: CostsReportDisplay - rimozione funzione duplicata
 function CostsReportDisplay({ data }) {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('it-IT', {
@@ -392,49 +569,73 @@ function CostsReportDisplay({ data }) {
     }).format(amount || 0);
   };
 
+  // ✅ FIXED: Accesso corretto alla struttura backend
+  const analysisData = data.data || data;
+
   return (
     <div className="costs-report">
       <div className="costs-summary">
         <div className="summary-card success">
           <h4>💰 Ricavi</h4>
-          <div className="value">{formatCurrency(data.revenue?.total)}</div>
-          <div className="detail">{data.revenue?.transactions || 0} transazioni</div>
+          <div className="value">{formatCurrency(analysisData.revenue?.total)}</div>
+          <div className="detail">{analysisData.revenue?.orders || 0} ordini</div>
         </div>
         <div className="summary-card danger">
           <h4>💸 Costi</h4>
-          <div className="value">{formatCurrency(data.costs?.total)}</div>
-          <div className="detail">{data.costs?.transactions || 0} ordini</div>
+          <div className="value">{formatCurrency(analysisData.costs?.actual)}</div>
+          <div className="detail">
+            Fonte: {analysisData.costs?.source === 'purchase_orders' ? 'Ordini Acquisto' : 'Stime'}
+          </div>
         </div>
         <div className="summary-card info">
           <h4>📊 Profitto</h4>
-          <div className="value">{formatCurrency(data.profit)}</div>
-          <div className="detail">Margine: {data.margin_percentage?.toFixed(1)}%</div>
+          <div className="value">{formatCurrency(analysisData.profit?.amount)}</div>
+          <div className="detail">
+            Margine: {analysisData.profit?.margin_percentage?.toFixed(1) || 0}%
+          </div>
+        </div>
+        <div className="summary-card secondary">
+          <h4>📦 Stock</h4>
+          <div className="value">{formatCurrency(analysisData.costs?.stock_value)}</div>
+          <div className="detail">
+            {analysisData.stock_info?.total_items || 0} articoli
+          </div>
         </div>
       </div>
 
-      <div className="costs-by-category">
-        <h4>📋 Costi per Categoria</h4>
-        <table className="report-table">
-          <thead>
-            <tr>
-              <th>Categoria</th>
-              <th>Costo Totale</th>
-              <th>Quantità</th>
-              <th>Fornitori</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.costs_by_category?.map((category, index) => (
-              <tr key={index}>
-                <td>{category.category || 'N/A'}</td>
-                <td>{formatCurrency(category.total_cost)}</td>
-                <td>{category.total_quantity}</td>
-                <td>{category.suppliers_count}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {analysisData.costs?.purchase_orders_count > 0 ? (
+        <div className="costs-details">
+          <h4>📋 Dettagli Analisi Costi</h4>
+          <div className="cost-breakdown">
+            <div className="cost-item">
+              <span className="cost-label">💰 Ordini di Acquisto:</span>
+              <span className="cost-value">
+                {analysisData.costs.purchase_orders_count} ordini • {formatCurrency(analysisData.costs.purchase_orders)}
+              </span>
+            </div>
+            <div className="cost-item">
+              <span className="cost-label">📈 Movimenti Stock:</span>
+              <span className="cost-value">
+                {analysisData.costs.movements?.in || 0} entrate • {analysisData.costs.movements?.out || 0} uscite
+              </span>
+            </div>
+            <div className="cost-item">
+              <span className="cost-label">💰 Ordine Medio:</span>
+              <span className="cost-value">{formatCurrency(analysisData.revenue?.avg_order)}</span>
+            </div>
+            <div className="cost-item">
+              <span className="cost-label">📦 Costo Medio/Unità:</span>
+              <span className="cost-value">{formatCurrency(analysisData.stock_info?.avg_cost)}</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="no-purchase-data">
+          <h4>ℹ️ Informazioni Analisi</h4>
+          <p>I costi sono calcolati sui movimenti di stock disponibili.</p>
+          <small>Per analisi più accurate, registra ordini di acquisto nel sistema.</small>
+        </div>
+      )}
     </div>
   );
 }
