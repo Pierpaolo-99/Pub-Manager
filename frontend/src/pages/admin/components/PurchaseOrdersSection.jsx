@@ -10,12 +10,13 @@ export default function PurchaseOrdersSection() {
   const [editingOrder, setEditingOrder] = useState(null);
   const [viewingOrder, setViewingOrder] = useState(null);
   
+  // ✅ FIXED: Filters allineati al backend
   const [filters, setFilters] = useState({
     search: '',
     status: 'all',
-    supplier: 'all',
-    date_from: '',
-    date_to: ''
+    supplier_id: 'all',  // ✅ FIXED: era 'supplier'
+    from_date: '',       // ✅ FIXED: era 'date_from'
+    to_date: ''          // ✅ FIXED: era 'date_to'
   });
 
   const [suppliers, setSuppliers] = useState([]);
@@ -25,6 +26,7 @@ export default function PurchaseOrdersSection() {
     fetchSuppliers();
   }, [filters]);
 
+  // ✅ ENHANCED: fetchOrders con proper error handling
   const fetchOrders = async () => {
     try {
       setLoading(true);
@@ -37,82 +39,134 @@ export default function PurchaseOrdersSection() {
         }
       });
       
-      const response = await fetch(`http://localhost:3000/api/purchase-orders?${params}`, {
-        credentials: 'include'
+      console.log('🔍 Fetching orders with params:', params.toString());
+      
+      // ✅ FIXED: Relative URL
+      const response = await fetch(`/api/purchase-orders?${params}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (!response.ok) {
-        throw new Error(`Errore HTTP: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
       }
       
       const data = await response.json();
+      console.log('✅ Orders response:', data);
+      
+      // ✅ ENHANCED: Handle response structure properly
       setOrders(data.orders || []);
       setStats(data.stats || {});
+      
+      // ✅ ENHANCED: Log pagination info if present
+      if (data.pagination) {
+        console.log(`📄 Pagination: ${data.pagination.limit} items, offset ${data.pagination.offset}`);
+      }
       
     } catch (err) {
       console.error('❌ Error fetching orders:', err);
       setError(err.message);
+      // ✅ ENHANCED: Set safe fallbacks
+      setOrders([]);
+      setStats({});
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ ENHANCED: fetchSuppliers with relative URL
   const fetchSuppliers = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/purchase-orders/suppliers', {
-        credentials: 'include'
+      const response = await fetch('/api/purchase-orders/suppliers', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Suppliers loaded:', data);
         setSuppliers(data.suppliers || []);
+      } else {
+        console.warn('⚠️ Failed to load suppliers');
+        setSuppliers([]);
       }
     } catch (err) {
       console.error('❌ Error fetching suppliers:', err);
+      setSuppliers([]);
     }
   };
 
+  // ✅ ENHANCED: Delete with proper error handling
   const handleDeleteOrder = async (id, orderNumber) => {
     if (!confirm(`Sei sicuro di voler eliminare l'ordine ${orderNumber}?`)) return;
     
     try {
-      const response = await fetch(`http://localhost:3000/api/purchase-orders/${id}`, {
+      setError(null);
+      
+      const response = await fetch(`/api/purchase-orders/${id}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (!response.ok) {
-        throw new Error('Errore nell\'eliminazione');
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || 'Errore nell\'eliminazione');
       }
       
       await fetchOrders();
       console.log(`✅ Deleted order: ${orderNumber}`);
     } catch (err) {
       console.error('❌ Error deleting order:', err);
-      alert(`Errore: ${err.message}`);
+      setError(`Errore eliminazione: ${err.message}`);
     }
   };
 
+  // ✅ ENHANCED: Status change with proper error handling
   const handleStatusChange = async (orderId, newStatus) => {
     try {
-      const response = await fetch(`http://localhost:3000/api/purchase-orders/${orderId}/status`, {
+      setError(null);
+      
+      const response = await fetch(`/api/purchase-orders/${orderId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         credentials: 'include',
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ 
+          status: newStatus,
+          // ✅ ENHANCED: Include date fields based on status
+          ...(newStatus === 'delivered' && { 
+            actual_delivery_date: new Date().toISOString().split('T')[0] 
+          })
+        })
       });
 
       if (!response.ok) {
-        throw new Error('Errore nell\'aggiornamento stato');
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || 'Errore nell\'aggiornamento stato');
       }
 
       await fetchOrders();
+      console.log(`✅ Updated order ${orderId} status to: ${newStatus}`);
     } catch (err) {
       console.error('❌ Error updating status:', err);
-      alert(`Errore: ${err.message}`);
+      setError(`Errore aggiornamento stato: ${err.message}`);
     }
   };
 
+  // ✅ ENHANCED: Status helpers with proper mapping
   const getStatusIcon = (status) => {
     const icons = {
       'draft': '📝',
@@ -152,6 +206,7 @@ export default function PurchaseOrdersSection() {
     return colors[status] || 'secondary';
   };
 
+  // ✅ ENHANCED: Formatting utilities
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('it-IT', {
       style: 'currency',
@@ -164,12 +219,15 @@ export default function PurchaseOrdersSection() {
     return new Date(dateString).toLocaleDateString('it-IT');
   };
 
+  // ✅ ENHANCED: Loading state
   if (loading) {
     return (
       <div className="purchase-orders-section">
         <div className="loading-spinner">
           <div className="spinner"></div>
-          <p>Caricamento ordini acquisto...</p>
+          <h3>🔄 Caricamento Ordini</h3>
+          <p>Elaborazione ordini acquisto in corso...</p>
+          <small>Connessione backend ordini</small>
         </div>
       </div>
     );
@@ -182,8 +240,8 @@ export default function PurchaseOrdersSection() {
         <div className="header-left">
           <h2>🛒 Ordini Acquisto</h2>
           <p className="section-subtitle">
-            {stats.total || 0} ordini • {stats.pending || 0} in attesa • 
-            Valore totale: {formatCurrency(stats.totalValue)}
+            {stats.total_orders || 0} ordini • {stats.confirmed_orders || 0} confermati • 
+            Valore totale: {formatCurrency(stats.total_value)}
           </p>
         </div>
         <button 
@@ -194,46 +252,53 @@ export default function PurchaseOrdersSection() {
         </button>
       </div>
 
-      {/* Stats rapide */}
+      {/* ✅ ENHANCED: Stats based on backend response */}
       <div className="order-stats">
         <div className="stat-card">
           <span className="stat-icon">📝</span>
           <div>
-            <div className="stat-number">{stats.draft || 0}</div>
+            <div className="stat-number">{stats.draft_orders || 0}</div>
             <div className="stat-label">Bozze</div>
           </div>
         </div>
         <div className="stat-card">
           <span className="stat-icon">📤</span>
           <div>
-            <div className="stat-number">{stats.sent || 0}</div>
+            <div className="stat-number">{stats.sent_orders || 0}</div>
             <div className="stat-label">Inviati</div>
           </div>
         </div>
         <div className="stat-card">
           <span className="stat-icon">✅</span>
           <div>
-            <div className="stat-number">{stats.confirmed || 0}</div>
+            <div className="stat-number">{stats.confirmed_orders || 0}</div>
             <div className="stat-label">Confermati</div>
           </div>
         </div>
         <div className="stat-card">
           <span className="stat-icon">📦</span>
           <div>
-            <div className="stat-number">{stats.delivered || 0}</div>
+            <div className="stat-number">{stats.delivered_orders || 0}</div>
             <div className="stat-label">Consegnati</div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <span className="stat-icon">⚠️</span>
+          <div>
+            <div className="stat-number">{stats.overdue_orders || 0}</div>
+            <div className="stat-label">In Ritardo</div>
           </div>
         </div>
         <div className="stat-card">
           <span className="stat-icon">💰</span>
           <div>
-            <div className="stat-number">{stats.paid || 0}</div>
-            <div className="stat-label">Pagati</div>
+            <div className="stat-number">{formatCurrency(stats.delivered_value || 0)}</div>
+            <div className="stat-label">Valore Consegnato</div>
           </div>
         </div>
       </div>
 
-      {/* Filtri */}
+      {/* ✅ FIXED: Filtri con nomi corretti */}
       <div className="filters-section">
         <div className="search-container">
           <input
@@ -252,18 +317,18 @@ export default function PurchaseOrdersSection() {
           className="filter-select"
         >
           <option value="all">Tutti gli stati</option>
-          <option value="draft">Bozze</option>
-          <option value="sent">Inviati</option>
-          <option value="confirmed">Confermati</option>
-          <option value="delivered">Consegnati</option>
-          <option value="invoiced">Fatturati</option>
-          <option value="paid">Pagati</option>
-          <option value="cancelled">Annullati</option>
+          <option value="draft">📝 Bozze</option>
+          <option value="sent">📤 Inviati</option>
+          <option value="confirmed">✅ Confermati</option>
+          <option value="delivered">📦 Consegnati</option>
+          <option value="invoiced">📄 Fatturati</option>
+          <option value="paid">💰 Pagati</option>
+          <option value="cancelled">❌ Annullati</option>
         </select>
 
         <select
-          value={filters.supplier}
-          onChange={(e) => setFilters(prev => ({ ...prev, supplier: e.target.value }))}
+          value={filters.supplier_id}
+          onChange={(e) => setFilters(prev => ({ ...prev, supplier_id: e.target.value }))}
           className="filter-select"
         >
           <option value="all">Tutti i fornitori</option>
@@ -272,24 +337,41 @@ export default function PurchaseOrdersSection() {
           ))}
         </select>
 
+        {/* ✅ FIXED: Rimossi commenti dagli attributi */}
         <input
           type="date"
-          value={filters.date_from}
-          onChange={(e) => setFilters(prev => ({ ...prev, date_from: e.target.value }))}
+          value={filters.from_date}
+          onChange={(e) => setFilters(prev => ({ ...prev, from_date: e.target.value }))}
           className="filter-date"
           placeholder="Da"
         />
 
         <input
           type="date"
-          value={filters.date_to}
-          onChange={(e) => setFilters(prev => ({ ...prev, date_to: e.target.value }))}
+          value={filters.to_date}
+          onChange={(e) => setFilters(prev => ({ ...prev, to_date: e.target.value }))}
           className="filter-date"
           placeholder="A"
         />
+
+        {/* ✅ ENHANCED: Clear filters button */}
+        {Object.values(filters).some(v => v && v !== 'all') && (
+          <button 
+            className="btn secondary clear-filters"
+            onClick={() => setFilters({
+              search: '',
+              status: 'all',
+              supplier_id: 'all',
+              from_date: '',
+              to_date: ''
+            })}
+          >
+            ✖️ Pulisci filtri
+          </button>
+        )}
       </div>
 
-      {/* Errori */}
+      {/* Enhanced Error banner */}
       {error && (
         <div className="error-banner">
           <span className="error-icon">⚠️</span>
@@ -298,7 +380,7 @@ export default function PurchaseOrdersSection() {
         </div>
       )}
 
-      {/* Tabella ordini */}
+      {/* ✅ ENHANCED: Table with better data handling */}
       <div className="table-container">
         <table className="table">
           <thead>
@@ -336,7 +418,7 @@ export default function PurchaseOrdersSection() {
                     <span className="order-date">Ord: {formatDate(order.order_date)}</span>
                     {order.expected_delivery_date && (
                       <span className="delivery-date">
-                        Cons: {formatDate(order.expected_delivery_date)}
+                        🚚 Cons: {formatDate(order.expected_delivery_date)}
                       </span>
                     )}
                     {order.actual_delivery_date && (
@@ -347,13 +429,21 @@ export default function PurchaseOrdersSection() {
                   </div>
                 </td>
                 <td>
-                  <span className="items-count">{order.items_count || 0} articoli</span>
+                  <span className="items-count">
+                    {order.items_count || 0} articoli
+                    {order.total_items_quantity && (
+                      <small> ({order.total_items_quantity} tot)</small>
+                    )}
+                  </span>
                 </td>
                 <td>
                   <div className="amount-info">
                     <span className="total-amount">{formatCurrency(order.total)}</span>
                     {order.subtotal !== order.total && (
                       <span className="subtotal">Sub: {formatCurrency(order.subtotal)}</span>
+                    )}
+                    {order.tax_amount > 0 && (
+                      <span className="tax-amount">IVA: {formatCurrency(order.tax_amount)}</span>
                     )}
                   </div>
                 </td>
@@ -392,6 +482,7 @@ export default function PurchaseOrdersSection() {
                       className="btn-small info"
                       onClick={() => {/* TODO: Invia email */}}
                       title="Invia"
+                      disabled
                     >
                       📧
                     </button>
@@ -399,6 +490,7 @@ export default function PurchaseOrdersSection() {
                       className="btn-small success"
                       onClick={() => {/* TODO: Stampa */}}
                       title="Stampa"
+                      disabled
                     >
                       🖨️
                     </button>
@@ -422,7 +514,12 @@ export default function PurchaseOrdersSection() {
         <div className="empty-state">
           <span className="empty-icon">🛒</span>
           <h3>Nessun ordine trovato</h3>
-          <p>Inizia creando il tuo primo ordine di acquisto</p>
+          <p>
+            {Object.values(filters).some(v => v && v !== 'all')
+              ? 'Nessun ordine corrisponde ai filtri selezionati.'
+              : 'Non ci sono ordini di acquisto. Inizia creando il primo ordine.'
+            }
+          </p>
           <button 
             className="btn primary" 
             onClick={() => setShowOrderModal(true)}
@@ -464,7 +561,7 @@ export default function PurchaseOrdersSection() {
   );
 }
 
-// Modal per creare/modificare ordine
+// ✅ ENHANCED: OrderModal with relative URLs and proper validation
 function OrderModal({ order, suppliers, onClose, onSave }) {
   const [formData, setFormData] = useState({
     supplier_id: '',
@@ -484,49 +581,96 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
 
   useEffect(() => {
     fetchIngredients();
-  }, []);
+    // ✅ ENHANCED: Pre-populate items if editing
+    if (order?.items) {
+      setFormData(prev => ({ 
+        ...prev, 
+        items: order.items.map(item => ({
+          ingredient_id: item.ingredient_id,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          notes: item.notes || '',
+          received_quantity: item.received_quantity || 0
+        }))
+      }));
+    }
+  }, [order]);
 
   const fetchIngredients = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/ingredients?active=true', {
-        credentials: 'include'
+      // ✅ FIXED: Relative URL
+      const response = await fetch('/api/ingredients?active=true', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (response.ok) {
         const data = await response.json();
-        setIngredients(data.ingredients || []);
+        console.log('✅ Ingredients loaded:', data);
+        setIngredients(data.ingredients || data || []);
       }
     } catch (err) {
-      console.error('Error fetching ingredients:', err);
+      console.error('❌ Error fetching ingredients:', err);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // ✅ ENHANCED: Frontend validation
+    if (!formData.supplier_id || !formData.order_date || !formData.items.length) {
+      setError('Fornitore, data ordine e almeno un articolo sono obbligatori');
+      return;
+    }
+
+    // ✅ ENHANCED: Validate items
+    const invalidItems = formData.items.some(item => 
+      !item.ingredient_id || !item.quantity || !item.unit_price
+    );
+    
+    if (invalidItems) {
+      setError('Tutti gli articoli devono avere ingrediente, quantità e prezzo');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
+      // ✅ FIXED: Relative URL
       const url = order 
-        ? `http://localhost:3000/api/purchase-orders/${order.id}`
-        : 'http://localhost:3000/api/purchase-orders';
+        ? `/api/purchase-orders/${order.id}`
+        : '/api/purchase-orders';
       
       const method = order ? 'PUT' : 'POST';
       
+      console.log(`📤 ${method} order:`, formData);
+      
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         credentials: 'include',
         body: JSON.stringify(formData)
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Errore nel salvataggio');
+        throw new Error(errorData.error || errorData.message || 'Errore nel salvataggio');
       }
 
+      const result = await response.json();
+      console.log('✅ Order saved:', result);
+      
       onSave();
     } catch (err) {
+      console.error('❌ Error saving order:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -567,18 +711,31 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
     }));
   };
 
-  const calculateTotal = () => {
-    return formData.items.reduce((total, item) => {
+  // ✅ ENHANCED: Calculate totals with tax
+  const calculateTotals = () => {
+    const subtotal = formData.items.reduce((total, item) => {
       const itemTotal = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0);
       return total + itemTotal;
     }, 0);
+    
+    const tax_rate = 0.22; // 22% IVA
+    const tax_amount = subtotal * tax_rate;
+    const total = subtotal + tax_amount;
+    
+    return {
+      subtotal: subtotal.toFixed(2),
+      tax_amount: tax_amount.toFixed(2), 
+      total: total.toFixed(2)
+    };
   };
+
+  const totals = calculateTotals();
 
   return (
     <div className="modal-overlay">
       <div className="modal-content extra-large">
         <div className="modal-header">
-          <h3>{order ? 'Modifica Ordine' : 'Nuovo Ordine Acquisto'}</h3>
+          <h3>{order ? `✏️ Modifica Ordine ${order.order_number}` : '➕ Nuovo Ordine Acquisto'}</h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
@@ -645,10 +802,10 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
                       className="form-select"
                     >
                       <option value="">Seleziona metodo</option>
-                      <option value="cash">Contanti</option>
-                      <option value="bank_transfer">Bonifico</option>
-                      <option value="check">Assegno</option>
-                      <option value="credit_card">Carta di Credito</option>
+                      <option value="cash">💵 Contanti</option>
+                      <option value="bank_transfer">🏦 Bonifico</option>
+                      <option value="check">📝 Assegno</option>
+                      <option value="credit_card">💳 Carta di Credito</option>
                     </select>
                   </div>
 
@@ -660,7 +817,7 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
                       value={formData.payment_terms}
                       onChange={handleChange}
                       className="form-input"
-                      placeholder="es. 30 giorni"
+                      placeholder="es. 30 giorni f.m."
                     />
                   </div>
                 </div>
@@ -673,6 +830,7 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
                     onChange={handleChange}
                     className="form-textarea"
                     rows="2"
+                    placeholder="Indirizzo di consegna (opzionale)"
                   />
                 </div>
 
@@ -684,6 +842,7 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
                     onChange={handleChange}
                     className="form-textarea"
                     rows="2"
+                    placeholder="Note aggiuntive per l'ordine"
                   />
                 </div>
               </div>
@@ -691,7 +850,7 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
               {/* Sezione articoli */}
               <div className="form-section">
                 <div className="section-header-inline">
-                  <h4>📦 Articoli Ordine</h4>
+                  <h4>📦 Articoli Ordine ({formData.items.length})</h4>
                   <button type="button" className="btn-small primary" onClick={addItem}>
                     ➕ Aggiungi Articolo
                   </button>
@@ -722,6 +881,7 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
                           placeholder="Quantità"
                           className="form-input"
                           step="0.001"
+                          min="0"
                           required
                         />
 
@@ -743,9 +903,10 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
                           type="number"
                           value={item.unit_price}
                           onChange={(e) => updateItem(index, 'unit_price', e.target.value)}
-                          placeholder="Prezzo unitario"
+                          placeholder="Prezzo unitario €"
                           className="form-input"
                           step="0.0001"
+                          min="0"
                           required
                         />
 
@@ -766,6 +927,7 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
                         type="button"
                         className="btn-small danger"
                         onClick={() => removeItem(index)}
+                        title="Rimuovi articolo"
                       >
                         🗑️
                       </button>
@@ -775,7 +937,26 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
 
                 {formData.items.length > 0 && (
                   <div className="order-total">
-                    <strong>Totale Ordine: €{calculateTotal().toFixed(2)}</strong>
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem'}}>
+                      <span>Subtotale:</span>
+                      <span>€{totals.subtotal}</span>
+                    </div>
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem'}}>
+                      <span>IVA (22%):</span>
+                      <span>€{totals.tax_amount}</span>
+                    </div>
+                    <div style={{display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #059669', paddingTop: '0.5rem'}}>
+                      <strong>Totale Ordine:</strong>
+                      <strong>€{totals.total}</strong>
+                    </div>
+                  </div>
+                )}
+
+                {formData.items.length === 0 && (
+                  <div className="empty-state" style={{padding: '2rem', textAlign: 'center'}}>
+                    <span className="empty-icon">📦</span>
+                    <h4>Nessun articolo nell'ordine</h4>
+                    <p>Aggiungi almeno un articolo per creare l'ordine</p>
                   </div>
                 )}
               </div>
@@ -786,8 +967,19 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
             <button type="button" className="btn secondary" onClick={onClose}>
               Annulla
             </button>
-            <button type="submit" className="btn primary" disabled={loading}>
-              {loading ? 'Salvando...' : order ? 'Aggiorna Ordine' : 'Crea Ordine'}
+            <button 
+              type="submit" 
+              className="btn primary" 
+              disabled={loading || !formData.supplier_id || !formData.items.length}
+            >
+              {loading ? (
+                <>
+                  <div className="btn-spinner"></div>
+                  {order ? 'Aggiornando...' : 'Creando...'}
+                </>
+              ) : (
+                order ? '💾 Aggiorna Ordine' : '➕ Crea Ordine'
+              )}
             </button>
           </div>
         </form>
@@ -796,10 +988,11 @@ function OrderModal({ order, suppliers, onClose, onSave }) {
   );
 }
 
-// Modal per visualizzare ordine
+// ✅ ENHANCED: OrderViewModal with relative URL
 function OrderViewModal({ order, onClose, onEdit }) {
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchOrderDetails();
@@ -807,16 +1000,28 @@ function OrderViewModal({ order, onClose, onEdit }) {
 
   const fetchOrderDetails = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/api/purchase-orders/${order.id}`, {
-        credentials: 'include'
+      setError(null);
+      
+      // ✅ FIXED: Relative URL
+      const response = await fetch(`/api/purchase-orders/${order.id}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        setOrderDetails(data);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || 'Errore nel caricamento dettagli');
       }
+      
+      const data = await response.json();
+      console.log('✅ Order details loaded:', data);
+      setOrderDetails(data);
     } catch (err) {
-      console.error('Error fetching order details:', err);
+      console.error('❌ Error fetching order details:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -840,7 +1045,30 @@ function OrderViewModal({ order, onClose, onEdit }) {
         <div className="modal-content large">
           <div className="loading-spinner">
             <div className="spinner"></div>
-            <p>Caricamento dettagli ordine...</p>
+            <h3>🔄 Caricamento dettagli ordine...</h3>
+            <p>Connessione al backend...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal-content large">
+          <div className="modal-header">
+            <h3>❌ Errore</h3>
+            <button className="modal-close" onClick={onClose}>×</button>
+          </div>
+          <div className="modal-body">
+            <div className="error-message">
+              {error}
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button className="btn secondary" onClick={onClose}>Chiudi</button>
+            <button className="btn primary" onClick={fetchOrderDetails}>🔄 Riprova</button>
           </div>
         </div>
       </div>
@@ -875,6 +1103,10 @@ function OrderViewModal({ order, onClose, onEdit }) {
                   <span>{orderDetails?.supplier_name}</span>
                 </div>
                 <div className="detail-item">
+                  <label>Email Fornitore:</label>
+                  <span>{orderDetails?.supplier_email || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
                   <label>Data Ordine:</label>
                   <span>{formatDate(orderDetails?.order_date)}</span>
                 </div>
@@ -883,26 +1115,68 @@ function OrderViewModal({ order, onClose, onEdit }) {
                   <span>{formatDate(orderDetails?.expected_delivery_date)}</span>
                 </div>
                 <div className="detail-item">
+                  <label>Consegna Effettiva:</label>
+                  <span>{formatDate(orderDetails?.actual_delivery_date)}</span>
+                </div>
+                <div className="detail-item">
                   <label>Stato:</label>
                   <span className={`status-badge ${orderDetails?.status}`}>
                     {orderDetails?.status}
                   </span>
                 </div>
                 <div className="detail-item">
+                  <label>Metodo Pagamento:</label>
+                  <span>{orderDetails?.payment_method || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Termini Pagamento:</label>
+                  <span>{orderDetails?.payment_terms || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Totali */}
+            <div className="details-section">
+              <h4>💰 Riepilogo Importi</h4>
+              <div className="details-grid">
+                <div className="detail-item">
+                  <label>Subtotale:</label>
+                  <span>{formatCurrency(orderDetails?.subtotal)}</span>
+                </div>
+                <div className="detail-item">
+                  <label>IVA:</label>
+                  <span>{formatCurrency(orderDetails?.tax_amount)}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Sconto:</label>
+                  <span>{formatCurrency(orderDetails?.discount_amount)}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Spese Spedizione:</label>
+                  <span>{formatCurrency(orderDetails?.shipping_cost)}</span>
+                </div>
+                <div className="detail-item">
                   <label>Totale:</label>
                   <span className="total-amount">{formatCurrency(orderDetails?.total)}</span>
                 </div>
+                {orderDetails?.invoice_number && (
+                  <div className="detail-item">
+                    <label>Numero Fattura:</label>
+                    <span>{orderDetails.invoice_number}</span>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Articoli */}
             <div className="details-section">
-              <h4>📦 Articoli Ordinati</h4>
+              <h4>📦 Articoli Ordinati ({orderDetails?.items?.length || 0})</h4>
               <div className="items-table">
                 <table className="table">
                   <thead>
                     <tr>
                       <th>Ingrediente</th>
+                      <th>Categoria</th>
                       <th>Quantità</th>
                       <th>Prezzo Unit.</th>
                       <th>Totale</th>
@@ -913,14 +1187,29 @@ function OrderViewModal({ order, onClose, onEdit }) {
                   <tbody>
                     {orderDetails?.items?.map(item => (
                       <tr key={item.id}>
-                        <td>{item.ingredient_name}</td>
+                        <td>
+                          <strong>{item.ingredient_name}</strong>
+                        </td>
+                        <td>
+                          <span className="category-badge">{item.ingredient_category}</span>
+                        </td>
                         <td>{item.quantity} {item.unit}</td>
                         <td>{formatCurrency(item.unit_price)}</td>
                         <td>{formatCurrency(item.total_price)}</td>
-                        <td>{item.received_quantity || 0} {item.unit}</td>
+                        <td>
+                          <span className={item.received_quantity > 0 ? 'text-success' : 'text-warning'}>
+                            {item.received_quantity || 0} {item.unit}
+                          </span>
+                        </td>
                         <td>{item.notes || '-'}</td>
                       </tr>
-                    ))}
+                    )) || (
+                      <tr>
+                        <td colSpan="7" style={{textAlign: 'center', color: '#64748b', padding: '2rem'}}>
+                          Nessun articolo nell'ordine
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -942,6 +1231,18 @@ function OrderViewModal({ order, onClose, onEdit }) {
                     <span>{orderDetails.notes}</span>
                   </div>
                 )}
+                <div className="detail-item">
+                  <label>Creato da:</label>
+                  <span>{orderDetails?.created_by_name || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Data Creazione:</label>
+                  <span>{formatDate(orderDetails?.created_at)}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Ultima Modifica:</label>
+                  <span>{formatDate(orderDetails?.updated_at)}</span>
+                </div>
               </div>
             )}
           </div>
@@ -951,10 +1252,10 @@ function OrderViewModal({ order, onClose, onEdit }) {
           <button className="btn secondary" onClick={onClose}>
             Chiudi
           </button>
-          <button className="btn info">
+          <button className="btn info" disabled>
             🖨️ Stampa
           </button>
-          <button className="btn success">
+          <button className="btn success" disabled>
             📧 Invia Email
           </button>
         </div>
