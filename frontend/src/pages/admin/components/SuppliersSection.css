@@ -555,46 +555,707 @@
   100% { transform: rotate(360deg); }
 }
 
-/* Responsive */
-@media (max-width: 1024px) {
-  .form-row {
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+/* ===================
+   MISSING COMPONENTS - ENHANCEMENTS
+=================== */
+
+/* ✅ ADDED: Success banner styling */
+.suppliers-section .success-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border: 1px solid #6ee7b7;
+  border-radius: 8px;
+  color: #065f46;
+  font-weight: 500;
+  margin-bottom: 1.5rem;
+  animation: slideInFromTop 0.3s ease-out;
+}
+
+.suppliers-section .success-icon {
+  color: #059669;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.suppliers-section .success-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #059669;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.suppliers-section .success-close:hover {
+  background: rgba(5, 150, 105, 0.1);
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
+/* ✅ ADDED: Missing stats card colors */
+.suppliers-section .stat-card.primary { 
+  border-left: 4px solid #3b82f6; 
+}
+
+.suppliers-section .stat-card.tertiary { 
+  border-left: 4px solid #8b5cf6; 
+}
+
+.suppliers-section .stat-card.primary::before {
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
+}
+
+.suppliers-section .stat-card.tertiary::before {
+  background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+}
+
+/* ✅ ADDED: Enhanced table components */
+.suppliers-section .supplier-notes {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-style: italic;
+  margin-top: 0.25rem;
+  cursor: help;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
+
+.suppliers-section .supplier-notes:hover {
+  color: #374151;
+}
+
+.suppliers-section .country {
+  font-size: 0.875rem;
+  color: #6366f1;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.suppliers-section .payment-terms.no-terms {
+  color: #9ca3af;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.suppliers-section .date-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.suppliers-section .created-date {
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* ✅ ADDED: Enhanced action buttons */
+.suppliers-section .refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.suppliers-section .refresh-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.suppliers-section .clear-filters {
+  white-space: nowrap;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.suppliers-section .clear-filters:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+/* ✅ ADDED: Enhanced empty state */
+.suppliers-section .empty-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+/* ✅ ADDED: Table footer */
+.suppliers-section .table-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.suppliers-section .table-summary {
+  color: #64748b;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.suppliers-section .table-summary strong {
+  color: #374151;
+  font-weight: 600;
+}
+
+/* ✅ ADDED: Supplier details modal components */
+.suppliers-section .supplier-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.suppliers-section .details-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.suppliers-section .details-section h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.5rem;
+}
+
+.suppliers-section .details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.suppliers-section .detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.suppliers-section .detail-item:last-child {
+  border-bottom: none;
+}
+
+.suppliers-section .detail-item strong {
+  color: #374151;
+  font-weight: 600;
+  min-width: 120px;
+  margin-right: 1rem;
+}
+
+.suppliers-section .contact-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.suppliers-section .contact-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.suppliers-section .contact-item:last-child {
+  border-bottom: none;
+}
+
+.suppliers-section .contact-item strong {
+  color: #374151;
+  font-weight: 600;
+  min-width: 80px;
+}
+
+.suppliers-section .contact-link {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  transition: color 0.2s ease;
+}
+
+.suppliers-section .contact-link:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.suppliers-section .address-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.suppliers-section .address-line {
+  padding: 0.25rem 0;
+}
+
+.suppliers-section .notes-content {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: #374151;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.suppliers-section .products-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+}
+
+.suppliers-section .stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.suppliers-section .stat-item strong {
+  color: #0c4a6e;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.suppliers-section .products-table-container {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.suppliers-section .products-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.suppliers-section .products-table th {
+  background: #f8fafc;
+  padding: 0.75rem 0.5rem;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.suppliers-section .products-table td {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.suppliers-section .products-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.suppliers-section .products-table .product-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.suppliers-section .products-table .product-name {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.875rem;
+}
+
+.suppliers-section .products-table .variant-name {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.suppliers-section .products-table .sku {
+  font-size: 0.7rem;
+  color: #6b7280;
+  background: #f1f5f9;
+  padding: 0.125rem 0.25rem;
+  border-radius: 3px;
+  font-family: monospace;
+  display: inline-block;
+}
+
+.suppliers-section .products-table .category {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  background: #f3f4f6;
+  color: #374151;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.suppliers-section .products-table .quantity.low {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.suppliers-section .products-table .cost,
+.suppliers-section .products-table .value {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-weight: 600;
+  color: #059669;
+}
+
+.suppliers-section .products-table .date {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+/* ✅ ADDED: Enhanced form components */
+.suppliers-section .form-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+}
+
+.suppliers-section .form-help {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  line-height: 1.3;
+  font-style: italic;
+}
+
+.suppliers-section .error-text {
+  color: #dc2626;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.suppliers-section .error-text::before {
+  content: '⚠️';
+}
+
+.suppliers-section .btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 0.25rem;
+}
+
+/* ✅ ENHANCED: Better button styles for the new actions */
+.suppliers-section .btn.primary,
+.suppliers-section .btn.secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.suppliers-section .btn.primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border-color: #2563eb;
+}
+
+.suppliers-section .btn.primary:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.suppliers-section .btn.secondary {
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+  color: white;
+  border-color: #4b5563;
+}
+
+.suppliers-section .btn.secondary:hover {
+  background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(75, 85, 99, 0.3);
+}
+
+.suppliers-section .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ✅ ENHANCED: Header actions layout */
+.suppliers-section .header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* ✅ ENHANCED: Responsive improvements for new components */
 @media (max-width: 768px) {
-  .filters-section {
+  .suppliers-section .section-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 1rem;
   }
   
-  .form-row {
-    grid-template-columns: 1fr;
+  .suppliers-section .header-actions {
+    flex-direction: row;
+    justify-content: space-between;
   }
   
-  .suppliers-stats {
-    grid-template-columns: repeat(2, 1fr);
+  .suppliers-section .filters-section {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
   }
   
-  .action-buttons {
+  .suppliers-section .filter-select {
+    min-width: auto;
+  }
+  
+  .suppliers-section .table-footer {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  
+  .suppliers-section .table-summary {
     flex-direction: column;
     gap: 0.25rem;
   }
   
-  .modal-content.extra-large {
-    width: 95%;
-    margin: 1rem;
+  .suppliers-section .empty-actions {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .suppliers-section .details-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .suppliers-section .products-stats {
+    grid-template-columns: 1fr;
+  }
+  
+  .suppliers-section .contact-item,
+  .suppliers-section .detail-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .suppliers-section .contact-item strong,
+  .suppliers-section .detail-item strong {
+    min-width: auto;
+    margin-right: 0;
   }
 }
 
 @media (max-width: 640px) {
-  .suppliers-stats {
+  .suppliers-section .suppliers-stats {
     grid-template-columns: 1fr;
   }
   
-  .section-header {
+  .suppliers-section .action-buttons {
     flex-direction: column;
-    gap: 1rem;
-    align-items: stretch;
+    gap: 0.25rem;
+  }
+  
+  .suppliers-section .btn-small {
+    padding: 0.25rem 0.375rem;
+    font-size: 0.7rem;
+    min-width: 36px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .suppliers-section .products-table-container {
+    max-height: 300px;
+  }
+  
+  .suppliers-section .products-table th,
+  .suppliers-section .products-table td {
+    padding: 0.5rem 0.375rem;
+  }
+  
+  .suppliers-section .modal-content.extra-large {
+    width: 95%;
+    margin: 0.5rem;
+    max-height: 95vh;
+  }
+  
+  .suppliers-section .modal-header,
+  .suppliers-section .modal-body,
+  .suppliers-section .modal-actions {
+    padding: 1rem;
+  }
+}
+
+/* ✅ ENHANCED: Focus and accessibility improvements */
+.suppliers-section .clear-filters:focus,
+.suppliers-section .refresh-btn:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.suppliers-section .contact-link:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ✅ ENHANCED: High contrast mode support */
+@media (prefers-contrast: high) {
+  .suppliers-section .status-badge,
+  .suppliers-section .stat-card {
+    border-width: 2px;
+  }
+  
+  .suppliers-section .contact-link {
+    font-weight: 700;
+  }
+}
+
+/* ✅ ENHANCED: Print optimizations */
+@media print {
+  .suppliers-section .success-banner,
+  .suppliers-section .error-banner {
+    background: white;
+    border: 2px solid #000;
+    color: #000;
+  }
+  
+  .suppliers-section .action-buttons,
+  .suppliers-section .header-actions {
+    display: none;
+  }
+  
+  .suppliers-section .table,
+  .suppliers-section .products-table {
+    font-size: 0.8rem;
+  }
+  
+  .suppliers-section .contact-link {
+    color: #000;
+    text-decoration: underline;
+  }
+}
+
+/* ✅ ENHANCED: Dark mode support (bonus) */
+@media (prefers-color-scheme: dark) {
+  .suppliers-section {
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  
+  .suppliers-section .section-header,
+  .suppliers-section .filters-section,
+  .suppliers-section .table-container,
+  .suppliers-section .modal-content {
+    background: #1e293b;
+    border-color: #334155;
+    color: #e2e8f0;
+  }
+  
+  .suppliers-section .stat-card.mini {
+    background: #1e293b;
+    border-color: #334155;
+    color: #e2e8f0;
+  }
+  
+  .suppliers-section .table tbody tr:hover,
+  .suppliers-section .products-table tbody tr:hover {
+    background: #334155;
+  }
+  
+  .suppliers-section .details-section {
+    background: #1e293b;
+    border-color: #334155;
   }
 }
