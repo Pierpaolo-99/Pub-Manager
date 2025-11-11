@@ -9,10 +9,13 @@ export default function RecipesSection() {
   const [showModal, setShowModal] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState(null);
   const [viewingRecipe, setViewingRecipe] = useState(null);
+  
+  // ✅ ENHANCED: Filters con product_variant support
   const [filters, setFilters] = useState({
     search: '',
     difficulty: 'all',
-    active: 'all'
+    active: 'all',
+    product_variant: 'all'  // ✅ ADDED: Filter by product
   });
 
   const [products, setProducts] = useState([]);
@@ -24,6 +27,7 @@ export default function RecipesSection() {
     fetchIngredients();
   }, [filters]);
 
+  // ✅ ENHANCED: fetchRecipes with relative URL and better error handling
   const fetchRecipes = async () => {
     try {
       setLoading(true);
@@ -36,15 +40,25 @@ export default function RecipesSection() {
         }
       });
       
-      const response = await fetch(`http://localhost:3000/api/recipes?${params}`, {
-        credentials: 'include'
+      console.log('🔍 Fetching recipes with params:', params.toString());
+      
+      // ✅ FIXED: Relative URL
+      const response = await fetch(`/api/recipes?${params}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (!response.ok) {
-        throw new Error(`Errore HTTP: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
       
       const data = await response.json();
+      console.log('✅ Recipes response:', data);
+      
       setRecipes(data.recipes || []);
       setStats(data.summary || {});
       
@@ -56,30 +70,46 @@ export default function RecipesSection() {
     }
   };
 
+  // ✅ ENHANCED: fetchProducts with relative URL
   const fetchProducts = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/recipes/products', {
-        credentials: 'include'
+      const response = await fetch('/api/recipes/products', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Products loaded:', data);
         setProducts(data.products || []);
+      } else {
+        console.warn('⚠️ Failed to load products');
       }
     } catch (err) {
       console.error('❌ Error fetching products:', err);
     }
   };
 
+  // ✅ ENHANCED: fetchIngredients with relative URL
   const fetchIngredients = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/ingredients?active=true', {
-        credentials: 'include'
+      const response = await fetch('/api/ingredients?active=true', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Ingredients loaded:', data);
         setIngredients(data.ingredients || []);
+      } else {
+        console.warn('⚠️ Failed to load ingredients');
       }
     } catch (err) {
       console.error('❌ Error fetching ingredients:', err);
@@ -96,29 +126,48 @@ export default function RecipesSection() {
     setShowModal(true);
   };
 
+  // ✅ ENHANCED: handleViewRecipe with relative URL
   const handleViewRecipe = async (recipe) => {
     try {
-      const response = await fetch(`http://localhost:3000/api/recipes/${recipe.id}`, {
-        credentials: 'include'
+      setError(null);
+      
+      const response = await fetch(`/api/recipes/${recipe.id}`, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
-      if (response.ok) {
-        const detailData = await response.json();
-        setViewingRecipe(detailData);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Errore nel caricamento dettagli');
       }
+      
+      const detailData = await response.json();
+      console.log('✅ Recipe details loaded:', detailData);
+      setViewingRecipe(detailData);
+      
     } catch (err) {
       console.error('❌ Error fetching recipe details:', err);
-      alert('Errore nel caricamento dettagli ricetta');
+      setError(`Errore dettagli: ${err.message}`);
     }
   };
 
+  // ✅ ENHANCED: handleDeleteRecipe with relative URL and better UX
   const handleDeleteRecipe = async (id, recipeName) => {
-    if (!confirm(`Sei sicuro di voler eliminare la ricetta "${recipeName}"?`)) return;
+    if (!confirm(`Sei sicuro di voler eliminare la ricetta "${recipeName}"?\n\nQuesta azione è irreversibile.`)) return;
     
     try {
-      const response = await fetch(`http://localhost:3000/api/recipes/${id}`, {
+      setError(null);
+      
+      const response = await fetch(`/api/recipes/${id}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
       
       if (!response.ok) {
@@ -126,15 +175,16 @@ export default function RecipesSection() {
         throw new Error(errorData.error || 'Errore nell\'eliminazione');
       }
       
+      console.log(`✅ Deleted recipe: ${recipeName}`);
       await fetchRecipes();
-      alert(`Ricetta "${recipeName}" eliminata con successo`);
       
     } catch (err) {
       console.error('❌ Error deleting recipe:', err);
-      alert(`Errore: ${err.message}`);
+      setError(`Errore eliminazione: ${err.message}`);
     }
   };
 
+  // ✅ ENHANCED: Utility functions
   const getDifficultyColor = (difficulty) => {
     const colors = {
       'easy': 'success',
@@ -168,12 +218,15 @@ export default function RecipesSection() {
     return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
   };
 
+  // ✅ ENHANCED: Loading state
   if (loading) {
     return (
       <div className="recipes-section">
         <div className="loading-spinner">
           <div className="spinner"></div>
-          <p>Caricamento ricette...</p>
+          <h3>🔄 Caricamento Ricette</h3>
+          <p>Elaborazione ricette e ingredienti in corso...</p>
+          <small>Connessione backend ricette</small>
         </div>
       </div>
     );
@@ -199,7 +252,7 @@ export default function RecipesSection() {
         </button>
       </div>
 
-      {/* Stats rapide */}
+      {/* ✅ ENHANCED: Stats con dati backend allineati */}
       <div className="recipe-stats">
         <div className="stat-card success">
           <span className="stat-icon">🟢</span>
@@ -229,14 +282,28 @@ export default function RecipesSection() {
             <div className="stat-label">Costo Medio</div>
           </div>
         </div>
+        <div className="stat-card info">
+          <span className="stat-icon">⏱️</span>
+          <div>
+            <div className="stat-number">{formatTime(stats.avgTime)}</div>
+            <div className="stat-label">Tempo Medio</div>
+          </div>
+        </div>
+        <div className="stat-card success">
+          <span className="stat-icon">✅</span>
+          <div>
+            <div className="stat-number">{stats.active || 0}</div>
+            <div className="stat-label">Attive</div>
+          </div>
+        </div>
       </div>
 
-      {/* Filtri */}
+      {/* ✅ ENHANCED: Filtri con product filter aggiunto */}
       <div className="filters-section">
         <div className="search-container">
           <input
             type="text"
-            placeholder="Cerca ricette, prodotti..."
+            placeholder="Cerca ricette, prodotti, descrizioni..."
             value={filters.search}
             onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
             className="search-input"
@@ -250,9 +317,9 @@ export default function RecipesSection() {
           className="filter-select"
         >
           <option value="all">Tutte le difficoltà</option>
-          <option value="easy">Facile</option>
-          <option value="medium">Media</option>
-          <option value="hard">Difficile</option>
+          <option value="easy">🟢 Facile</option>
+          <option value="medium">🟡 Media</option>
+          <option value="hard">🔴 Difficile</option>
         </select>
 
         <select
@@ -261,12 +328,41 @@ export default function RecipesSection() {
           className="filter-select"
         >
           <option value="all">Tutti gli stati</option>
-          <option value="true">Solo attive</option>
-          <option value="false">Solo inattive</option>
+          <option value="true">✅ Solo attive</option>
+          <option value="false">❌ Solo inattive</option>
         </select>
+
+        {/* ✅ ADDED: Product filter */}
+        <select
+          value={filters.product_variant}
+          onChange={(e) => setFilters(prev => ({ ...prev, product_variant: e.target.value }))}
+          className="filter-select"
+        >
+          <option value="all">Tutti i prodotti</option>
+          {products.map(product => (
+            <option key={product.id} value={product.id}>
+              {product.product_name} - {product.name}
+            </option>
+          ))}
+        </select>
+
+        {/* ✅ ENHANCED: Clear filters button */}
+        {Object.values(filters).some(v => v && v !== 'all') && (
+          <button 
+            className="btn secondary clear-filters"
+            onClick={() => setFilters({
+              search: '',
+              difficulty: 'all',
+              active: 'all',
+              product_variant: 'all'
+            })}
+          >
+            ✖️ Pulisci filtri
+          </button>
+        )}
       </div>
 
-      {/* Errori */}
+      {/* Enhanced Error banner */}
       {error && (
         <div className="error-banner">
           <span className="error-icon">⚠️</span>
@@ -309,9 +405,13 @@ export default function RecipesSection() {
               {recipe.version > 1 && (
                 <div className="info-row">
                   <span className="info-label">🔄 Versione:</span>
-                  <span>{recipe.version}</span>
+                  <span>v{recipe.version}</span>
                 </div>
               )}
+              <div className="info-row">
+                <span className="info-label">👨‍🍳 Creato da:</span>
+                <span>{recipe.created_by_name || 'N/A'}</span>
+              </div>
             </div>
 
             {recipe.description && (
@@ -327,35 +427,37 @@ export default function RecipesSection() {
               <button 
                 className="btn-small primary"
                 onClick={() => handleViewRecipe(recipe)}
-                title="Visualizza"
+                title="Visualizza dettagli"
               >
                 👁️
               </button>
               <button 
                 className="btn-small secondary"
                 onClick={() => handleEditRecipe(recipe)}
-                title="Modifica"
+                title="Modifica ricetta"
               >
                 ✏️
               </button>
               <button 
                 className="btn-small info"
                 onClick={() => {/* TODO: Duplica ricetta */}}
-                title="Duplica"
+                title="Duplica ricetta"
+                disabled
               >
                 📋
               </button>
               <button 
                 className="btn-small success"
                 onClick={() => {/* TODO: Stampa ricetta */}}
-                title="Stampa"
+                title="Stampa ricetta"
+                disabled
               >
                 🖨️
               </button>
               <button 
                 className="btn-small danger"
                 onClick={() => handleDeleteRecipe(recipe.id, recipe.name)}
-                title="Elimina"
+                title="Elimina ricetta"
               >
                 🗑️
               </button>
@@ -375,7 +477,12 @@ export default function RecipesSection() {
         <div className="empty-state">
           <span className="empty-icon">📝</span>
           <h3>Nessuna ricetta trovata</h3>
-          <p>Inizia creando la tua prima ricetta</p>
+          <p>
+            {Object.values(filters).some(v => v && v !== 'all')
+              ? 'Nessuna ricetta corrisponde ai filtri selezionati.'
+              : 'Inizia creando la tua prima ricetta per i prodotti del menu.'
+            }
+          </p>
           <button 
             className="btn primary" 
             onClick={handleAddRecipe}
@@ -419,7 +526,7 @@ export default function RecipesSection() {
   );
 }
 
-// Modal per creare/modificare ricetta
+// ✅ ENHANCED: RecipeModal with relative URLs and cost calculation
 function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
   const [formData, setFormData] = useState({
     product_variant_id: '',
@@ -439,21 +546,67 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // ✅ ENHANCED: Pre-populate form if editing
+  useEffect(() => {
+    if (recipe?.ingredients) {
+      setFormData(prev => ({
+        ...prev,
+        ingredients: recipe.ingredients.map(ingredient => ({
+          ingredient_id: ingredient.ingredient_id,
+          quantity: ingredient.quantity,
+          unit: ingredient.unit,
+          notes: ingredient.notes || '',
+          is_optional: ingredient.is_optional || false,
+          preparation_step: ingredient.preparation_step || 1,
+          cost_per_unit: ingredient.cost_per_unit || 0
+        }))
+      }));
+    }
+  }, [recipe]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // ✅ ENHANCED: Frontend validation
+    if (!formData.product_variant_id || !formData.name) {
+      setError('Prodotto e nome ricetta sono obbligatori');
+      return;
+    }
+
+    if (!formData.ingredients.length) {
+      setError('Almeno un ingrediente è richiesto');
+      return;
+    }
+
+    // ✅ ENHANCED: Validate ingredients
+    const invalidIngredients = formData.ingredients.some(ingredient => 
+      !ingredient.ingredient_id || !ingredient.quantity
+    );
+    
+    if (invalidIngredients) {
+      setError('Tutti gli ingredienti devono avere ingrediente e quantità');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
+      // ✅ FIXED: Relative URL
       const url = recipe 
-        ? `http://localhost:3000/api/recipes/${recipe.id}`
-        : 'http://localhost:3000/api/recipes';
+        ? `/api/recipes/${recipe.id}`
+        : '/api/recipes';
       
       const method = recipe ? 'PUT' : 'POST';
       
+      console.log(`📤 ${method} recipe:`, formData);
+      
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         credentials: 'include',
         body: JSON.stringify(formData)
       });
@@ -463,8 +616,12 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
         throw new Error(errorData.error || 'Errore nel salvataggio');
       }
 
+      const result = await response.json();
+      console.log('✅ Recipe saved:', result);
+      
       onSave();
     } catch (err) {
+      console.error('❌ Error saving recipe:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -510,11 +667,29 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
     }));
   };
 
+  // ✅ ENHANCED: Real-time cost calculation
+  const calculateEstimatedCost = () => {
+    return formData.ingredients.reduce((total, ingredient) => {
+      const quantity = parseFloat(ingredient.quantity) || 0;
+      const costPerUnit = parseFloat(ingredient.cost_per_unit) || 0;
+      return total + (quantity * costPerUnit);
+    }, 0);
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('it-IT', {
+      style: 'currency',
+      currency: 'EUR'
+    }).format(amount || 0);
+  };
+
+  const estimatedCost = calculateEstimatedCost();
+
   return (
     <div className="modal-overlay">
       <div className="modal-content extra-large">
         <div className="modal-header">
-          <h3>{recipe ? 'Modifica Ricetta' : 'Nuova Ricetta'}</h3>
+          <h3>{recipe ? `✏️ Modifica Ricetta - ${recipe.name}` : '➕ Nuova Ricetta'}</h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
@@ -555,6 +730,7 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                       value={formData.name}
                       onChange={handleChange}
                       className="form-input"
+                      placeholder="Es. Pizza Margherita Classica"
                       required
                     />
                   </div>
@@ -568,6 +744,7 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                     onChange={handleChange}
                     className="form-textarea"
                     rows="3"
+                    placeholder="Descrivi la ricetta e le sue caratteristiche..."
                   />
                 </div>
 
@@ -582,6 +759,7 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                       className="form-input"
                       min="0.1"
                       step="0.1"
+                      placeholder="1.0"
                     />
                   </div>
 
@@ -594,6 +772,7 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                       onChange={handleChange}
                       className="form-input"
                       min="0"
+                      placeholder="15"
                     />
                   </div>
 
@@ -606,6 +785,7 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                       onChange={handleChange}
                       className="form-input"
                       min="0"
+                      placeholder="10"
                     />
                   </div>
 
@@ -617,9 +797,9 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                       onChange={handleChange}
                       className="form-select"
                     >
-                      <option value="easy">Facile</option>
-                      <option value="medium">Media</option>
-                      <option value="hard">Difficile</option>
+                      <option value="easy">🟢 Facile</option>
+                      <option value="medium">🟡 Media</option>
+                      <option value="hard">🔴 Difficile</option>
                     </select>
                   </div>
                 </div>
@@ -628,10 +808,17 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
               {/* Ingredienti */}
               <div className="form-section">
                 <div className="section-header-inline">
-                  <h4>🥗 Ingredienti</h4>
-                  <button type="button" className="btn-small primary" onClick={addIngredient}>
-                    ➕ Aggiungi Ingrediente
-                  </button>
+                  <h4>🥗 Ingredienti ({formData.ingredients.length})</h4>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+                    {estimatedCost > 0 && (
+                      <div style={{color: '#059669', fontWeight: '600'}}>
+                        Costo stimato: {formatCurrency(estimatedCost)}
+                      </div>
+                    )}
+                    <button type="button" className="btn-small primary" onClick={addIngredient}>
+                      ➕ Aggiungi Ingrediente
+                    </button>
+                  </div>
                 </div>
 
                 <div className="ingredients-list">
@@ -659,6 +846,7 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                           placeholder="Quantità"
                           className="form-input"
                           step="0.001"
+                          min="0"
                           required
                         />
 
@@ -676,13 +864,15 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                           <option value="conf">conf</option>
                           <option value="cucchiai">cucchiai</option>
                           <option value="cucchiaini">cucchiaini</option>
+                          <option value="pizzico">pizzico</option>
+                          <option value="qb">q.b.</option>
                         </select>
 
                         <input
                           type="text"
                           value={ingredient.notes}
                           onChange={(e) => updateIngredient(index, 'notes', e.target.value)}
-                          placeholder="Note (es. a dadini, tritato...)"
+                          placeholder="Note (es. a dadini, tritato fine...)"
                           className="form-input"
                         />
 
@@ -700,11 +890,20 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                         type="button"
                         className="btn-small danger"
                         onClick={() => removeIngredient(index)}
+                        title="Rimuovi ingrediente"
                       >
                         🗑️
                       </button>
                     </div>
                   ))}
+
+                  {formData.ingredients.length === 0 && (
+                    <div className="empty-state" style={{padding: '2rem', textAlign: 'center'}}>
+                      <span className="empty-icon">🥗</span>
+                      <h4>Nessun ingrediente aggiunto</h4>
+                      <p>Aggiungi almeno un ingrediente per creare la ricetta</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -718,8 +917,8 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                     value={formData.instructions}
                     onChange={handleChange}
                     className="form-textarea"
-                    rows="5"
-                    placeholder="Descrivi passo passo come preparare la ricetta..."
+                    rows="6"
+                    placeholder="Descrivi passo passo come preparare la ricetta:&#10;1. Preriscalda il forno a 200°C&#10;2. Prepara l'impasto mescolando...&#10;3. Cuoci per 15 minuti..."
                   />
                 </div>
 
@@ -731,7 +930,7 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                     onChange={handleChange}
                     className="form-textarea"
                     rows="3"
-                    placeholder="Consigli, varianti, note particolari..."
+                    placeholder="Consigli, varianti, note particolari, suggerimenti di presentazione..."
                   />
                 </div>
 
@@ -741,8 +940,11 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
                     name="active"
                     checked={formData.active}
                     onChange={handleChange}
+                    id="active-checkbox"
                   />
-                  <label className="checkbox-label">Ricetta attiva</label>
+                  <label htmlFor="active-checkbox" className="checkbox-label">
+                    Ricetta attiva (visibile nel sistema)
+                  </label>
                 </div>
               </div>
             </div>
@@ -752,8 +954,19 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
             <button type="button" className="btn secondary" onClick={onClose}>
               Annulla
             </button>
-            <button type="submit" className="btn primary" disabled={loading}>
-              {loading ? 'Salvando...' : recipe ? 'Aggiorna Ricetta' : 'Crea Ricetta'}
+            <button 
+              type="submit" 
+              className="btn primary" 
+              disabled={loading || !formData.product_variant_id || !formData.name || !formData.ingredients.length}
+            >
+              {loading ? (
+                <>
+                  <div className="btn-spinner"></div>
+                  {recipe ? 'Aggiornando...' : 'Creando...'}
+                </>
+              ) : (
+                recipe ? '💾 Aggiorna Ricetta' : '➕ Crea Ricetta'
+              )}
             </button>
           </div>
         </form>
@@ -762,7 +975,7 @@ function RecipeModal({ recipe, products, ingredients, onClose, onSave }) {
   );
 }
 
-// Modal per visualizzare ricetta
+// ✅ ENHANCED: RecipeViewModal remains the same but with better formatting
 function RecipeViewModal({ recipe, onClose, onEdit }) {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('it-IT', {
@@ -781,11 +994,22 @@ function RecipeViewModal({ recipe, onClose, onEdit }) {
 
   const getDifficultyLabel = (difficulty) => {
     const labels = {
-      'easy': 'Facile',
-      'medium': 'Media',
-      'hard': 'Difficile'
+      'easy': '🟢 Facile',
+      'medium': '🟡 Media',
+      'hard': '🔴 Difficile'
     };
     return labels[difficulty] || difficulty;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('it-IT', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   return (
@@ -813,7 +1037,7 @@ function RecipeViewModal({ recipe, onClose, onEdit }) {
                 </div>
                 <div className="detail-item">
                   <label>Porzioni:</label>
-                  <span>{recipe.portion_size || 1}</span>
+                  <span>{recipe.portion_size || 1} persone</span>
                 </div>
                 <div className="detail-item">
                   <label>Difficoltà:</label>
@@ -828,16 +1052,36 @@ function RecipeViewModal({ recipe, onClose, onEdit }) {
                   <span>{formatTime(recipe.cooking_time)}</span>
                 </div>
                 <div className="detail-item">
+                  <label>Tempo Totale:</label>
+                  <span>{formatTime((recipe.preparation_time || 0) + (recipe.cooking_time || 0))}</span>
+                </div>
+                <div className="detail-item">
                   <label>Costo Totale:</label>
                   <span className="cost-amount">{formatCurrency(recipe.total_cost)}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Costo per Porzione:</label>
+                  <span className="cost-amount">
+                    {formatCurrency((recipe.total_cost || 0) / (recipe.portion_size || 1))}
+                  </span>
                 </div>
                 <div className="detail-item">
                   <label>Versione:</label>
                   <span>v{recipe.version}</span>
                 </div>
                 <div className="detail-item">
+                  <label>Stato:</label>
+                  <span className={recipe.active ? 'text-success' : 'text-danger'}>
+                    {recipe.active ? '✅ Attiva' : '❌ Inattiva'}
+                  </span>
+                </div>
+                <div className="detail-item">
                   <label>Creato da:</label>
                   <span>{recipe.created_by_name || 'N/A'}</span>
+                </div>
+                <div className="detail-item">
+                  <label>Creato il:</label>
+                  <span>{formatDate(recipe.created_at)}</span>
                 </div>
               </div>
 
@@ -875,7 +1119,13 @@ function RecipeViewModal({ recipe, onClose, onEdit }) {
                         <td>{formatCurrency(ingredient.total_cost)}</td>
                         <td>{ingredient.notes || '-'}</td>
                       </tr>
-                    ))}
+                    )) || (
+                      <tr>
+                        <td colSpan="5" style={{textAlign: 'center', color: '#64748b', padding: '2rem'}}>
+                          Nessun ingrediente nella ricetta
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -911,11 +1161,14 @@ function RecipeViewModal({ recipe, onClose, onEdit }) {
           <button className="btn secondary" onClick={onClose}>
             Chiudi
           </button>
-          <button className="btn info">
+          <button className="btn info" disabled>
             🖨️ Stampa
           </button>
-          <button className="btn success">
+          <button className="btn success" disabled>
             📋 Duplica
+          </button>
+          <button className="btn primary" onClick={onEdit}>
+            ✏️ Modifica
           </button>
         </div>
       </div>
