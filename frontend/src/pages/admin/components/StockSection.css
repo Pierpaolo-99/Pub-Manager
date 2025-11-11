@@ -1094,38 +1094,6 @@
   }
 }
 
-/* ✅ ENHANCED: Dark mode support (bonus) */
-@media (prefers-color-scheme: dark) {
-  .stock-section {
-    background: #0f172a;
-    color: #e2e8f0;
-  }
-  
-  .stock-section .section-header,
-  .stock-section .filters-section,
-  .stock-section .table-container,
-  .stock-section .modal-content {
-    background: #1e293b;
-    border-color: #334155;
-    color: #e2e8f0;
-  }
-  
-  .stock-section .stat-card.mini {
-    background: #1e293b;
-    border-color: #334155;
-    color: #e2e8f0;
-  }
-  
-  .stock-section .table tbody tr:hover {
-    background: #334155;
-  }
-  
-  .stock-section .stock-preview {
-    background: #1e293b;
-    border-color: #334155;
-  }
-}
-
 /* ✅ ENHANCED: Print optimizations */
 @media print {
   .stock-section .success-banner,

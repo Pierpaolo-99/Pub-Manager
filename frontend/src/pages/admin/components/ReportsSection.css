@@ -1201,27 +1201,3 @@
     padding: 0.75rem;
   }
 }
-
-/* ✅ ENHANCED: Dark mode support (optional) */
-@media (prefers-color-scheme: dark) {
-  .reports-section {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    color: #e2e8f0;
-  }
-  
-  .stat-card,
-  .report-card,
-  .summary-card {
-    background: #1e293b;
-    border-color: #334155;
-    color: #e2e8f0;
-  }
-  
-  .report-table thead {
-    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  }
-  
-  .report-table tbody tr:hover {
-    background: rgba(51, 65, 85, 0.5);
-  }
-}
