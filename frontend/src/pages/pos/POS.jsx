@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from 'react';
-import { AuthContext } from '../../context/AuthContext';
+import { useAuth } from "../../context/AuthContext";
 import ProductGrid from './components/ProductGrid';
 import OrderSummary from './components/OrderSummary';
 import TableSelector from './components/TableSelector';
@@ -8,7 +8,7 @@ import QuickActions from './components/QuickActions';
 import './POS.css';
 
 export default function POS() {
-  const { user } = useContext(AuthContext);
+  const { user } = useAuth();
   const [currentView, setCurrentView] = useState('menu'); // menu, order, tables, checkout
   const [selectedTable, setSelectedTable] = useState(null);
   const [currentOrder, setCurrentOrder] = useState({

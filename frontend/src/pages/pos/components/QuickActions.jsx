@@ -305,7 +305,7 @@ export default function QuickActions({
 
   // Filter actions based on user permissions
   const availableActions = quickActionButtons.filter(action => 
-    !action.permission || currentUser.permissions?.includes(action.permission)
+    !action.permission || currentUser?.permissions?.includes(action.permission)
   );
 
   return (

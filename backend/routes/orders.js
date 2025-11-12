@@ -23,4 +23,11 @@ router.patch('/:id', ordersController.updateOrderStatus);
 // DELETE ordine
 router.delete('/:id', ordersController.deleteOrder);
 
+router.post('/:id/checkout', ordersController.checkoutOrder);
+router.post('/:id/refund', ordersController.refundOrder);
+router.post('/:id/hold', ordersController.holdOrder);
+router.post('/:id/recall', ordersController.recallOrder);
+router.post('/:id/discount', ordersController.applyDiscount);
+router.get('/held', ordersController.listHeldOrders);
+
 module.exports = router;

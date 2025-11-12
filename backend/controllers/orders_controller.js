@@ -855,6 +855,113 @@ function getTablesWithStatus(req, res) {
     });
 }
 
+// Checkout ordine (pagamento)
+exports.checkoutOrder = (req, res) => {
+    const { id } = req.params;
+    const { payment_method, change_given } = req.body;
+
+    const sql = `
+        UPDATE orders 
+        SET status = 'pagato', payment_status = 'completed', payment_method = ?, change_given = ?, paid_at = NOW(), updated_at = NOW()
+        WHERE id = ?
+    `;
+    connection.query(sql, [payment_method, change_given, id], (err, result) => {
+        if (err) {
+            console.error('❌ Error in checkoutOrder:', err);
+            return res.status(500).json({ success: false, error: 'Errore nel checkout', details: err.message });
+        }
+        res.json({ success: true, message: 'Pagamento completato', order_id: id });
+    });
+};
+
+// Rimborso ordine
+exports.refundOrder = (req, res) => {
+    const { id } = req.params;
+    const { amount, reason } = req.body;
+
+    // Aggiorna status ordine e registra rimborso (aggiungi tabella refunds se vuoi tracciare)
+    const sql = `
+        UPDATE orders 
+        SET status = 'annullato', payment_status = 'failed', updated_at = NOW()
+        WHERE id = ?
+    `;
+    connection.query(sql, [id], (err) => {
+        if (err) {
+            console.error('❌ Error in refundOrder:', err);
+            return res.status(500).json({ success: false, error: 'Errore nel rimborso', details: err.message });
+        }
+        // (Opzionale) Inserisci nella tabella refunds
+        res.json({ success: true, message: 'Rimborso effettuato', order_id: id });
+    });
+};
+
+// Sospendi ordine
+exports.holdOrder = (req, res) => {
+    const { id } = req.params;
+    const sql = `
+        UPDATE orders 
+        SET held_at = NOW(), updated_at = NOW()
+        WHERE id = ?
+    `;
+    connection.query(sql, [id], (err) => {
+        if (err) {
+            console.error('❌ Error in holdOrder:', err);
+            return res.status(500).json({ success: false, error: 'Errore nel sospendere ordine', details: err.message });
+        }
+        res.json({ success: true, message: 'Ordine sospeso', order_id: id });
+    });
+};
+
+// Recupera ordine sospeso
+exports.recallOrder = (req, res) => {
+    const { id } = req.params;
+    const sql = `
+        UPDATE orders 
+        SET held_at = NULL, updated_at = NOW()
+        WHERE id = ?
+    `;
+    connection.query(sql, [id], (err) => {
+        if (err) {
+            console.error('❌ Error in recallOrder:', err);
+            return res.status(500).json({ success: false, error: 'Errore nel recuperare ordine', details: err.message });
+        }
+        res.json({ success: true, message: 'Ordine recuperato', order_id: id });
+    });
+};
+
+// Applica sconto manuale
+exports.applyDiscount = (req, res) => {
+    const { id } = req.params;
+    const { discount_type, discount_amount } = req.body;
+
+    const sql = `
+        UPDATE orders 
+        SET discount_type = ?, discount_amount = ?, updated_at = NOW()
+        WHERE id = ?
+    `;
+    connection.query(sql, [discount_type, discount_amount, id], (err) => {
+        if (err) {
+            console.error('❌ Error in applyDiscount:', err);
+            return res.status(500).json({ success: false, error: 'Errore nell\'applicare sconto', details: err.message });
+        }
+        res.json({ success: true, message: 'Sconto applicato', order_id: id });
+    });
+};
+
+// Lista ordini sospesi
+exports.listHeldOrders = (req, res) => {
+    const sql = `
+        SELECT * FROM orders WHERE held_at IS NOT NULL ORDER BY held_at DESC
+    `;
+    connection.query(sql, (err, results) => {
+        if (err) {
+            console.error('❌ Error in listHeldOrders:', err);
+            return res.status(500).json({ success: false, error: 'Errore nel caricamento ordini sospesi', details: err.message });
+        }
+        res.json({ success: true, orders: results });
+    });
+};
+
 module.exports = {
     getAllOrders,
     getOrderById,

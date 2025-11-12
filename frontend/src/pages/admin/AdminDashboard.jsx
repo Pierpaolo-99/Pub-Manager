@@ -22,6 +22,8 @@ import ReportsSection from "./components/ReportsSection";
 import FinancialSection from "./components/FinancialSection";
 import SettingsSection from "./components/SettingsSection";
 
+import POS from "../pos/POS"
+
 import "./AdminDashboard.css";
 
 export default function AdminDashboard() {
@@ -42,7 +44,8 @@ export default function AdminDashboard() {
         { id: 'users', name: 'Utenti', icon: '👥' },
         { id: 'tables', name: 'Tavoli', icon: '🪑' },
         { id: 'orders', name: 'Ordini', icon: '🛒' },
-        { id: 'promotions', name: 'Promozioni', icon: '🏷️' }        
+        { id: 'promotions', name: 'Promozioni', icon: '🏷️' },
+        { id: 'pos', name: 'Punto Vendita', icon: '💰' }       
       ]
     },
     {
@@ -113,6 +116,7 @@ export default function AdminDashboard() {
       case 'reports': return <ReportsSection />;
       case 'financial': return <FinancialSection />;
       case 'settings': return <SettingsSection />;
+      case 'pos': return <POS />;
       
       default: return <OverviewSection />;
     }
