@@ -117,6 +117,9 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/settings', require('./routes/settings'));
 
+app.use('/api/cash-drawer', require('./routes/cash_drawer'));
+app.use('/api/refunds', require('./routes/refunds'));
+
 // ===== GESTIONE ERRORI GLOBALI =====
 app.use((error, req, res, next) => {
   console.error('💥 Global Error:', {
