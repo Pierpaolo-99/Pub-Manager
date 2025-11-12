@@ -467,6 +467,69 @@ function calculateTablesSummary(tables) {
     };
 }
 
+function getTablesWithStatus(req, res) {
+    console.log('🏪 Getting tables with current status');
+
+    const sql = `
+        SELECT 
+            t.*,
+            o.id as current_order_id,
+            o.total as current_order_total,
+            o.status as current_order_status,
+            o.created_at as current_order_created_at,
+            COUNT(oi.id) as current_order_items
+        FROM tables t
+        LEFT JOIN orders o ON t.id = o.table_id 
+            AND o.status IN ('pending', 'in_preparazione', 'pronto', 'servito')
+        LEFT JOIN order_items oi ON o.id = oi.order_id
+        WHERE t.active = 1
+        GROUP BY t.id, t.number, t.location, t.capacity, t.status, t.active, t.notes, t.created_at, t.updated_at,
+                 o.id, o.total, o.status, o.created_at
+        ORDER BY t.number
+    `;
+
+    connection.query(sql, (err, results) => {
+        if (err) {
+            console.error('❌ Error fetching tables:', err);
+            return res.status(500).json({ 
+                success: false,
+                error: 'Errore nel caricamento tavoli',
+                details: err.message 
+            });
+        }
+
+        const tables = results.map(table => ({
+            id: table.id,
+            number: table.number,
+            name: `Tavolo ${table.number}`,
+            capacity: table.capacity,
+            area: table.location || 'interno',
+            status: table.active ? (
+                table.status === 'free' ? 'available' : table.status
+            ) : 'inactive',
+            active: Boolean(table.active),
+            notes: table.notes,
+            qr_code: table.qr_code,
+            lastOccupied: table.status === 'occupied' ? table.updated_at : null,
+            created_at: table.created_at,
+            updated_at: table.updated_at,
+            currentOrder: table.current_order_id ? {
+                id: table.current_order_id,
+                total: parseFloat(table.current_order_total),
+                status: table.current_order_status,
+                items: parseInt(table.current_order_items) || 0,
+                created_at: table.current_order_created_at
+            } : null
+        }));
+
+        console.log(`✅ Found ${tables.length} tables`);
+        res.json({
+            success: true,
+            tables: tables
+        });
+    });
+}
+
 module.exports = {
     getAllTables,
     getTableById,
@@ -475,5 +538,6 @@ module.exports = {
     updateTableStatus,
     deleteTable,
     getTablesStats,
-    getLocations
+    getLocations,
+    getTablesWithStatus
 };
