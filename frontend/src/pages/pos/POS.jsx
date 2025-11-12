@@ -374,6 +374,7 @@ export default function POS() {
         currentOrder={currentOrder}
         onClearOrder={clearOrder}
         hasItems={currentOrder.items.length > 0}
+        currentUser={user}
       />
 
       {/* Bottom Navigation */}

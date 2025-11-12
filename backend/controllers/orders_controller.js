@@ -856,7 +856,7 @@ function getTablesWithStatus(req, res) {
 }
 
 // Checkout ordine (pagamento)
-exports.checkoutOrder = (req, res) => {
+function checkoutOrder(req, res){
     const { id } = req.params;
     const { payment_method, change_given } = req.body;
 
@@ -875,7 +875,7 @@ exports.checkoutOrder = (req, res) => {
 };
 
 // Rimborso ordine
-exports.refundOrder = (req, res) => {
+function refundOrder(req, res) {
     const { id } = req.params;
     const { amount, reason } = req.body;
 
@@ -896,7 +896,7 @@ exports.refundOrder = (req, res) => {
 };
 
 // Sospendi ordine
-exports.holdOrder = (req, res) => {
+function holdOrder(req, res) {
     const { id } = req.params;
     const sql = `
         UPDATE orders 
@@ -913,7 +913,7 @@ exports.holdOrder = (req, res) => {
 };
 
 // Recupera ordine sospeso
-exports.recallOrder = (req, res) => {
+function recallOrder(req, res) {
     const { id } = req.params;
     const sql = `
         UPDATE orders 
@@ -930,7 +930,7 @@ exports.recallOrder = (req, res) => {
 };
 
 // Applica sconto manuale
-exports.applyDiscount = (req, res) => {
+function applyDiscount(req, res){
     const { id } = req.params;
     const { discount_type, discount_amount } = req.body;
 
@@ -949,7 +949,7 @@ exports.applyDiscount = (req, res) => {
 };
 
 // Lista ordini sospesi
-exports.listHeldOrders = (req, res) => {
+function listHeldOrders (req, res){
     const sql = `
         SELECT * FROM orders WHERE held_at IS NOT NULL ORDER BY held_at DESC
     `;
@@ -969,5 +969,11 @@ module.exports = {
     updateOrderStatus,
     deleteOrder,
     getOrdersStats,
-    getTablesWithStatus
+    getTablesWithStatus,
+    checkoutOrder,
+    refundOrder,
+    holdOrder,
+    recallOrder,
+    applyDiscount,
+    listHeldOrders
 };
